@@ -229,7 +229,8 @@ function call_center_menu() {
   
   $items['admin/calls'] = array(
     'title' => 'Administrer calls',
-    'page callback' => 'call_center_admin_view',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('call_center_admin_view'),
     'access arguments' => array('administer call_center entities'),
     'weight' => 1,
     'type' => MENU_NORMAL_ITEM,

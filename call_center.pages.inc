@@ -11,13 +11,61 @@ function call_center_view($call_info, $view_mode = 'full') {
   return $ev;
 }
 
-function call_center_admin_view() {
-  // Retrieve user center information.
-  global $user;
-  $user = user_load($user->uid);
-  $center_tid = (isset($user->call_center) && is_array($user->call_center) && count($user->call_center) > 0) ? $user->call_center[LANGUAGE_NONE][0]['tid'] : 0;
-  // Prepare table headers.
-  $header = array(
+function call_center_admin_view($form, &$form_state) {
+  $user_call_info = _call_center_get_user_call_info();
+  $center_tid = $user_call_info['center_tid'];
+  $call_ids = $user_call_info['call_ids'];
+  $header = _call_center_table_header();
+  // Execute query.
+  $query = db_select('call_center', 'cc')
+    ->condition('id', $call_ids,'IN')
+    ->extend('PagerDefault')->limit(25)
+    ->extend('TableSort')->orderByHeader($header)
+    ->fields ('cc', array ('id', 'call_date', 'call_source_phone', 'call_destination_phone', 'call_duration', 'call_status'));
+  $results = $query->execute();
+  $html_table = _call_center_create_sortable_table($header, $results);
+  
+  //$exposed_filter_form = drupal_get_form('call_center_create_exposed_filter_admin_form', $center_tid, $call_ids);
+  _call_center_filter_form($form, $form_state, $center_tid, $call_ids);
+  $form['#submit'][] = 'call_center_filter_form_submit';
+  // Print the table result.
+  $html = render($exposed_filter_form);
+  $html .= $html_table;
+  $form['table'] = array(
+    '#type' => 'markup',
+    '#markup' => $html,
+    '#weight' => 200,
+  );
+  //return $html;
+  return $form;
+}
+
+function call_center_filter_form_submit($form, &$form_state) {
+  $user_call_info = _call_center_get_user_call_info();
+  $center_tid = $user_call_info['center_tid'];
+  $call_ids = $user_call_info['call_ids'];
+  $header = _call_center_table_header();
+  // Execute query.
+  $query = db_select('call_center', 'cc')
+    ->condition('id', $call_ids,'IN')
+    ->extend('PagerDefault')->limit(25)
+    ->extend('TableSort')->orderByHeader($header)
+    ->fields ('cc', array ('id', 'call_date', 'call_source_phone', 'call_destination_phone', 'call_duration', 'call_status'));
+  $results = $query->execute();
+  $html_table = _call_center_create_sortable_table($header, $results);
+  
+  //$exposed_filter_form = drupal_get_form('call_center_create_exposed_filter_admin_form', $center_tid, $call_ids);
+  $form['filter'] = _call_center_filter_form($form, $form_state, $center_tid, $call_ids);
+  $form['#submit'][] = 'call_center_filter_form_submit';
+  // Print the table result.
+  $html = render($exposed_filter_form);
+  $html .= $html_table;
+  return $html;
+  //return $form;
+}
+
+function _call_center_table_header() {
+  return array(
     array('data' => 'Id', 'field' => 'id', 'sort' => 'asc'),
     array('data' => 'Date', 'field' => 'call_date'),
     array('data' => 'Source', 'field' => 'call_source_phone'),
@@ -26,26 +74,10 @@ function call_center_admin_view() {
     array('data' => 'Status', 'field' => 'call_status'),
     array('data' => 'Operations'),
   );
-  // Execute DB query.
-  $field_query = new EntityFieldQuery;
-  $center_calls = $field_query
-    ->entityCondition('entity_type', 'call_center')
-    ->propertyCondition('type', 'call')
-    ->fieldCondition('call_center', 'tid', $center_tid, '=')
-    ->execute();
-  $call_ids = array();
-  $call_ids[] = 0;
-  if (is_array($center_calls) && isset($center_calls['call_center'])) {
-    foreach ($center_calls['call_center'] as $call_id => $call_info) {
-      $call_ids[] = $call_id;
-    }
-  }
-  $query = db_select('call_center', 'cc')
-    ->condition('id', $call_ids,'IN')
-    ->extend('PagerDefault')->limit(25)
-    ->extend('TableSort')->orderByHeader($header)
-    ->fields ('cc', array ('id', 'call_date', 'call_source_phone', 'call_destination_phone', 'call_duration', 'call_status'));
-  $results = $query->execute();
+}
+
+function _call_center_create_sortable_table($header, $results) {
+  // Prepare table rows.
   $rows = array();
   foreach ($results as $call) {
     $edit_link = l('<img src="/sites/default/graphics/admin/application--pencil.png" title="Edit" alt="Edit"/>', 'call_center/'. $call->id .'/edit', array('html' => TRUE));
@@ -62,13 +94,7 @@ function call_center_admin_view() {
       ),
     );
   }
-  $params = array(
-    'center_tid' => $center_tid,
-    'call_ids' => $call_ids,
-  );
-  $exposed_filter_form = drupal_get_form('call_center_create_exposed_filter_admin_form', $center_tid, $call_ids);
-  $html = render($exposed_filter_form);
-  $html .= theme('table', array(
+  $html = theme('table', array(
     'header' => $header,
     'rows'=>$rows,
     'caption' => 'Calls administration',
@@ -81,18 +107,35 @@ function call_center_admin_view() {
   return $html;
 }
 
-function call_center_create_exposed_filter_admin_form($form, &$form_state, $center_tid, $call_ids) {
-  $form = array();
-  $form['filter'] = call_center_filter_form($form_state, $center_tid, $call_ids);
-  $form['#submit'][] = 'call_center_filter_form_submit';
-  return $form;
+function _call_center_get_user_call_info(){
+  // Retrieve user center information.
+  global $user;
+  $user = user_load($user->uid);
+  $center_tid = (isset($user->call_center) && is_array($user->call_center) && count($user->call_center) > 0) ? $user->call_center[LANGUAGE_NONE][0]['tid'] : 0;
+  // Execute DB query.
+  $field_query = new EntityFieldQuery;
+  $center_calls = $field_query
+    ->entityCondition('entity_type', 'call_center')
+    ->propertyCondition('type', 'call')
+    ->fieldCondition('call_center', 'tid', $center_tid, '=')
+    ->execute();
+  $call_ids = array();
+  $call_ids[] = 0;
+  if (is_array($center_calls) && isset($center_calls['call_center'])) {
+    foreach ($center_calls['call_center'] as $call_id => $call_info) {
+      $call_ids[] = $call_id;
+    }
+  }
+  return array(
+    'center_tid' => $center_tid,
+    'call_ids' => $call_ids,
+  );
 }
 
-function call_center_filter_form($form_state, $center_tid, $call_ids) {
-  $filters = array();
+function _call_center_filter_form(&$form, &$form_state, $center_tid, $call_ids) {
   // Regular filters
   $call_source_phone_value = isset($form_state['values']['call_source_phone']) ? $form_state['values']['call_source_phone'] : '';
-  $filters['call_source_phone'] = array(
+  $form['call_source_phone'] = array(
     '#type' => 'textfield',
     '#title' => t('Source'),
     '#size' => 20,
@@ -102,7 +145,7 @@ function call_center_filter_form($form_state, $center_tid, $call_ids) {
     '#weight' => 1,
   );
   $call_destination_phone_value = isset($form_state['values']['call_destination_phone']) ? $form_state['values']['call_destination_phone'] : '';
-  $filters['call_destination_phone'] = array(
+  $form['call_destination_phone'] = array(
     '#type' => 'textfield',
     '#title' => t('Destination'),
     '#size' => 20,
@@ -133,7 +176,7 @@ function call_center_filter_form($form_state, $center_tid, $call_ids) {
     $call_operator_value = isset($form_state['values']['call_operator']) ? $form_state['values']['call_operator'] : key($options);
     // Add the operator filter form element.
     $html_suffix = '<div id="operator-extensions"></div>';
-    $filters['call_operator'] = array(
+    $form['call_operator'] = array(
       '#type' => 'select',
       '#title' => t('Operator'),
       '#options' => $options,
@@ -143,16 +186,16 @@ function call_center_filter_form($form_state, $center_tid, $call_ids) {
       '#ajax' => array(
         //'callback' => 'call_center_get_operator_extensions',
         'event' => 'change',
-        'callback' => 'call_center_ajax_extensions',
+        'callback' => '_call_center_ajax_extensions',
         'wrapper' => 'operator-extensions',
         //'method' => 'replace',
         //'effect' => 'fade',
       ),
     );
-    $filters['call_operator_extensions'] = array(
+    $form['call_operator_extensions'] = array(
       '#type' => 'select',
       '#title' => t('Operator extensions'),
-      '#options' => call_center_get_extensions($call_operator_value),
+      '#options' => _call_center_get_extensions($call_operator_value),
       '#default_value' => 0,
       '#weight' => 6,
       '#prefix' => '<div id="operator-extensions">',
@@ -161,7 +204,7 @@ function call_center_filter_form($form_state, $center_tid, $call_ids) {
   }
   
   
-  $filters['actions'] = array(
+  $form['actions'] = array(
     '#weight' => 99,
   );
 
@@ -170,21 +213,20 @@ function call_center_filter_form($form_state, $center_tid, $call_ids) {
     $submit += $form['#submit'];
   }
   
-  $filters['actions']['submit'] = array(
+  $form['actions']['submit'] = array(
     '#type' => 'submit',
     '#value' => t('Apply'),
     '#submit' => $submit + array('call_center_filter_form_submit'),
     '#weight' => 100,
   );
-
-  return $filters;
+  return $form;
 }
 
-function call_center_ajax_extensions($form, $form_state) {
+function _call_center_ajax_extensions($form, $form_state) {
   return $form['call_operator_extensions'];
 }
 
-function call_center_get_extensions($key = '') {
+function _call_center_get_extensions($key = '') {
   $options = array();
   $options[0] = t('All extensions');
   $operator = node_load($key);
@@ -196,7 +238,12 @@ function call_center_get_extensions($key = '') {
   return $options;
 }
 
-function call_center_filter_form_submit($form, &$form_state) {
+/* Added drupal_get_form call to module hook_menu (Not used) */
+function call_center_create_exposed_filter_admin_form($form, &$form_state, $center_tid, $call_ids) {
   dpm($form_state);
-  $form_state['redirect'] = 'admin/calls';
+  $form = array();
+  //$form['filter'] = _call_center_filter_form($form, $form_state, $center_tid, $call_ids);
+  _call_center_filter_form($form, $form_state, $center_tid, $call_ids);
+  $form['#submit'][] = 'call_center_filter_form_submit';
+  return $form;
 }
