@@ -1,0 +1,816 @@
+<?php
+
+/**
+ * Implements hook_entity_info().
+ */
+function call_center_entity_info() {
+  $return = array(
+    'call_center' => array(
+      'label' => t('Call Center'),
+      'entity class' => 'CallCenter',
+      'controller class' => 'CallCenterController',
+      'base table' => 'call_center',
+      'fieldable' => TRUE,
+      'entity keys' => array(
+        'id' => 'id',
+        'bundle' => 'type',
+      ),
+      'bundle keys' => array(
+        'bundle' => 'type',
+      ),
+      'bundles' => array(),
+      'load hook' => 'call_center_load',
+      'views controller class' => 'CallCenterViewsController',
+      'view modes' => array(
+        'full' => array(
+          'label' => t('Default'),
+          'custom settings' => FALSE,
+        ),
+      ),
+      'label callback' => 'entity_class_label',
+      'uri callback' => 'entity_class_uri',
+      'module' => 'call_center',
+      'access callback' => 'call_center_access',
+    ),
+  );
+  $return['call_center_type'] = array(
+    'label' => t('Call Center Type'),
+    'entity class' => 'CallCenterType',
+    'controller class' => 'CallCenterTypeController',
+    'base table' => 'call_center_type',
+    'fieldable' => FALSE,
+    'bundle of' => 'call_center',
+    'exportable' => TRUE,
+    'entity keys' => array(
+      'id' => 'id',
+      'name' => 'type',
+      'label' => 'label',
+    ),
+    'module' => 'call_center',
+    // Enable the entity API's admin UI.
+    'admin ui' => array(
+      'path' => 'admin/structure/callcenter-types',
+      'file' => 'call_center.admin.inc',
+      'controller class' => 'CallCenterTypeUIController',
+    ),
+    'access callback' => 'call_center_type_access',
+  );
+
+  return $return;
+}
+
+/**
+ * Implements hook_entity_info_alter().
+ */
+function call_center_entity_info_alter(&$entity_info) {
+  foreach (call_center_types() as $type => $info) {
+    $entity_info['call_center']['bundles'][$type] = array(
+      'label' => $info->label,
+      'admin' => array(
+        'path' => 'admin/structure/callcenter-types/manage/%call_center_type',
+        'real path' => 'admin/structure/callcenter-types/manage/' . $type,
+        'bundle argument' => 4,
+      ),
+    );
+  }
+}
+
+/**
+ * Implements hook_cron().
+ */
+function call_center_cron(){
+  if (!lock_acquire('call_center_locker', 5000.0)) {
+    // Wait for another request that is already doing this work.
+    watchdog('call_center', 'Function Call Center Entity Tasks is executing', array(), WATCHDOG_INFO);
+    lock_wait('call_center_locker');
+    return FALSE;
+  }
+  
+  try{
+    watchdog('call_center', 'Cron Call Center Entity Tasks executed!', array(), WATCHDOG_INFO);
+  }catch(Exception $e){
+    watchdog('call_center', 'Cron Call Center Entity Tasks failed: %error_message', array('%error_message' => $e->getMessage()), WATCHDOG_ERROR);
+  }
+  lock_release('call_center_locker');
+}
+
+/**
+ * Implements hook_user_login().
+ */
+function call_center_user_login(&$edit, $account) {
+  $user_roles = $account->roles;
+  if(is_array($user_roles) && isset($user_roles[4]) && $user_roles[4] == 'call_center') {
+    //dpm($user_roles);
+    //$edit['redirect'] = 'call_center';
+    $_GET['destination'] = 'admin/calls';
+  }
+}
+
+/**
+ * JSON call for call source phone autocomplete 
+ */
+function call_center_autocomplete_source_list($string = '') {
+  // Retrieve user center information.
+  global $user;
+  $user = user_load($user->uid);
+  $center_tid = (isset($user->call_center) && is_array($user->call_center) && count($user->call_center) > 0) ? $user->call_center[LANGUAGE_NONE][0]['tid'] : 0;
+  // Execute DB query.
+  $field_query = new EntityFieldQuery;
+  $center_calls = $field_query
+    ->entityCondition('entity_type', 'call_center')
+    ->propertyCondition('type', 'call')
+    ->fieldCondition('call_center', 'tid', $center_tid, '=')
+    ->execute();
+  $call_ids = array();
+  $call_ids[] = 0;
+  if (is_array($center_calls) && isset($center_calls['call_center'])) {
+    foreach ($center_calls['call_center'] as $call_id => $call_info) {
+      $call_ids[] = $call_id;
+    }
+  }
+  $query = db_select('call_center', 'cc')
+    ->fields ('cc', array ('id', 'call_source_phone'))
+    ->condition('id', $call_ids,'IN')
+    ->condition('call_source_phone', db_like($string) . '%', 'LIKE');
+  $results = $query->execute();
+  $matches = array();
+  foreach ($results as $call) {
+    $matches[$call->id] = check_plain($call->call_source_phone);
+  }
+  drupal_json_output($matches);
+}
+
+/**
+ * JSON call for call source phone autocomplete 
+ */
+function call_center_autocomplete_destination_list($string = '') {
+  // Retrieve user center information.
+  global $user;
+  $user = user_load($user->uid);
+  $center_tid = (isset($user->call_center) && is_array($user->call_center) && count($user->call_center) > 0) ? $user->call_center[LANGUAGE_NONE][0]['tid'] : 0;
+  // Execute DB query.
+  $field_query = new EntityFieldQuery;
+  $center_calls = $field_query
+    ->entityCondition('entity_type', 'call_center')
+    ->propertyCondition('type', 'call')
+    ->fieldCondition('call_center', 'tid', $center_tid, '=')
+    ->execute();
+  $call_ids = array();
+  $call_ids[] = 0;
+  if (is_array($center_calls) && isset($center_calls['call_center'])) {
+    foreach ($center_calls['call_center'] as $call_id => $call_info) {
+      $call_ids[] = $call_id;
+    }
+  }
+  $query = db_select('call_center', 'cc')
+    ->fields ('cc', array ('id', 'call_destination_phone'))
+    ->condition('id', $call_ids,'IN')
+    ->condition('call_destination_phone', db_like($string) . '%', 'LIKE');
+  $results = $query->execute();
+  $matches = array();
+  foreach ($results as $call) {
+    $matches[$call->id] = check_plain($call->call_destination_phone);
+  }
+  drupal_json_output($matches);
+}
+
+/**
+ * Implements hook_menu().
+ */
+function call_center_menu() {
+  $items = array();
+  
+  $items['call_center/autocomplete_source'] = array(
+    'title' => 'Call center source phone autocomplete',
+    'page callback' => 'call_center_autocomplete_source_list',
+    'access arguments' => array('administer call_center entities'),
+    'type' => MENU_CALLBACK,
+  );
+  $items['call_center/autocomplete_destination'] = array(
+    'title' => 'Call center destination phone autocomplete',
+    'page callback' => 'call_center_autocomplete_destination_list',
+    'access arguments' => array('administer call_center entities'),
+    'type' => MENU_CALLBACK,
+  );
+  
+  // *** MENU OPTIONS FOR ENTITY ADMINISTRATION ***
+  $items['call_center/add'] = array(
+    'title' => 'Add Call',
+    'page callback' => 'call_center_admin_add_page',
+    'access arguments' => array('create call_center entities'),
+    'file' => 'call_center.admin.inc',
+    'type' => MENU_LOCAL_ACTION,
+    'tab_parent' => 'admin/calls',
+    'tab_root' => 'admin/calls',
+    'weight' => 1,
+  );
+  $items['call_center/import_csv'] = array(
+    'title' => 'Import Call Center CSV',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('call_center_admin_import_csv_form'),
+    'access arguments' => array('administer call_center entities'),
+    'file' => 'call_center.admin.inc',
+    'type' => MENU_LOCAL_ACTION,
+    'tab_parent' => 'admin/calls',
+    'tab_root' => 'admin/calls',
+    'weight' => 2,
+  );
+  $items['call_center/clear_calls'] = array(
+    'title' => 'Clear all calls',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('call_center_delete_calls_form'),
+    'access arguments' => array('delete call_center entitiy call'),
+    'file' => 'call_center.admin.inc',
+    'type' => MENU_LOCAL_ACTION,
+    'tab_parent' => 'admin/calls',
+    'tab_root' => 'admin/calls',
+    'weight' => 3,
+  );
+  
+  $items['admin/calls'] = array(
+    'title' => 'Administrer calls',
+    'page callback' => 'call_center_admin_view',
+    'access arguments' => array('administer call_center entities'),
+    'weight' => 1,
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'call_center.pages.inc',
+  );
+  // *** END MENU OPTIONS FOR ENTITY ADMINISTRATION ***
+  
+  // *** MENU OPTIONS FOR ENTITY ***
+  $callcenter_uri = 'call_center/%call_center';
+  $callcenter_uri_argument_position = 1;
+
+  $items[$callcenter_uri] = array(
+    'title callback' => 'entity_label',
+    'title arguments' => array('call_center', $callcenter_uri_argument_position),
+    'page callback' => 'call_center_view',
+    'page arguments' => array($callcenter_uri_argument_position),
+    'access callback' => 'call_center_custom_access',
+    'access arguments' => array('view', 'call_center', $callcenter_uri_argument_position),
+    'file' => 'call_center.pages.inc',
+  );
+
+  $items[$callcenter_uri . '/view'] = array(
+    'title' => 'View',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+
+  $items[$callcenter_uri . '/delete'] = array(
+    'title' => 'Delete Call Center Entity',
+    'title callback' => 'call_center_label',
+    'title arguments' => array($callcenter_uri_argument_position),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('call_center_delete_form', $callcenter_uri_argument_position),
+    'access callback' => 'entity_access',
+    'access arguments' => array('edit', 'call_center', $callcenter_uri_argument_position),
+    'file' => 'call_center.admin.inc',
+  );
+
+  $items[$callcenter_uri . '/edit'] = array(
+    'title' => 'Edit',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('call_center_form', $callcenter_uri_argument_position),
+    'access callback' => 'entity_access',
+    'access arguments' => array('edit', 'call_center', $callcenter_uri_argument_position),
+    'file' => 'call_center.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_PAGE | MENU_CONTEXT_INLINE,
+  );
+  // *** END MENU OPTIONS FOR ENTITY ***
+
+  // *** MENU OPTIONS FOR ENTITY TYPES ***
+  foreach (call_center_types() as $type => $info) {
+    $items['call_center/add/' . $type] = array(
+      'title' => 'Add Call Center Entity',
+      'page callback' => 'call_center_add',
+      'page arguments' => array(2),
+      'access callback' => 'entity_access',
+      'access arguments' => array('create', 'call_center', $type),
+      'file' => 'call_center.admin.inc',
+    );
+  }
+
+  $items['admin/structure/try_entity-types/%call_center_type/delete'] = array(
+    'title' => 'Delete',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('call_center_type_form_delete_confirm', 4),
+    'access arguments' => array('administer call_center types'),
+    'weight' => 1,
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'call_center.admin.inc',
+  );
+  // *** MENU OPTIONS FOR ENTITY TYPES ***
+
+  return $items;
+}
+
+function call_center_custom_access($operation, $entity_type, $entity = NULL){
+  $have_access = FALSE;
+  $basic_access = entity_access($operation, $entity_type, $entity);
+  if($basic_access && $entity != NULL){
+    $have_access = TRUE;
+  }
+  return $have_access;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function call_center_permission() {
+  $permissions = array(
+    'administer call_center entities' => array(
+      'title' => t('Administer Call Center Entity types'),
+      'description' => t('Allows users to configure Call Center Entity types and their fields.'),
+      'restrict access' => TRUE,
+    ),
+    'create call_center entities' => array(
+      'title' => t('Create Call Center Entities'),
+      'description' => t('Allows users to create Call Center Entities.'),
+      'restrict access' => TRUE,
+    ),
+    'view any call_center entities' => array(
+      'title' => t('View any Call Center Entity'),
+      'description' => t('Allows users to view any calls.'),
+      'restrict access' => TRUE,
+    ),
+    'view own call_center entities' => array(
+      'title' => t('View own Call Center Entities'),
+      'description' => t('Allows users to view own calls.'),
+      'restrict access' => TRUE,
+    ),
+    'edit any call_center entities' => array(
+      'title' => t('Edit any Call Center Entity'),
+      'description' => t('Allows users to edit any Call Center Entities.'),
+      'restrict access' => TRUE,
+    ),
+    'edit own call_center entities' => array(
+      'title' => t('Edit own Call Center Entities'),
+      'description' => t('Allows users to edit own Call Center Entities.'),
+      'restrict access' => TRUE,
+    ),
+    'delete any call_center entities' => array(
+      'title' => t('Delete any Call Center Entity'),
+      'description' => t('Allows users to delete any Call Center Entities.'),
+      'restrict access' => TRUE,
+    ),
+    'delete own call_center entities' => array(
+      'title' => t('Delete own Call Center Entity'),
+      'description' => t('Allows users to delete own Call Center Entities.'),
+      'restrict access' => TRUE,
+    ),
+  );
+
+  return $permissions;
+}
+
+function call_center_preprocess_views_view(&$vars) {
+  if (isset($vars['view']->name)) {
+    $hook_sugestion = (isset($vars['theme_hook_suggestion'])) ? $vars['theme_hook_suggestion'] : '';
+    //$function = __FUNCTION__ . '__' . $vars['view']->name . '__' . $vars['view']->current_display . '__' . $hook_sugestion;
+    $function = __FUNCTION__ . '__' . $hook_sugestion;
+    //dpm($function);
+    if (function_exists($function)) {
+     $function($vars);
+    }
+  }
+}
+
+function call_center_preprocess_views_view__views_view__call_center(&$vars) {
+  //dpm($vars);
+}
+
+/*
+function call_center_preprocess_views_view_table(&$vars) {
+  if (isset($vars['view']->name)) {
+    $hook_sugestion = (isset($vars['theme_hook_suggestion'])) ? $vars['theme_hook_suggestion'] : '';
+    //$function = __FUNCTION__ . '__' . $vars['view']->name . '__' . $vars['view']->current_display . '__' . $hook_sugestion;
+    $function = __FUNCTION__ . '__' . $hook_sugestion;
+    //dpm($function);
+    if (function_exists($function)) {
+     $function($vars);
+    }
+  }
+}
+
+function call_center_preprocess_views_view_table__views_view_table__call_center(&$vars) {
+  //dpm($vars);
+}
+*/
+
+function call_center_form_alter(&$form, $form_state, $form_id) {
+  // Check if form is exposed filters from views.
+  if ($form_id == 'views_exposed_form') {
+    // Retrieve the current user center id.
+    global $user;
+    $user = user_load($user->uid);
+    $center_tid = (isset($user->call_center) && is_array($user->call_center) && count($user->call_center) > 0) ? $user->call_center[LANGUAGE_NONE][0]['tid'] : 0;
+    // Retrieve the center operators form DB
+    $field_query = new EntityFieldQuery;
+    $center_operators = $field_query
+      ->entityCondition('entity_type', 'node')
+      ->entityCondition('bundle', 'operator')
+      ->fieldCondition('call_center', 'tid', $center_tid, '=')
+      ->execute();
+    $options = array();
+    $options[0] = t('All operators');
+    if(isset($center_operators['node'])) {
+      foreach($center_operators['node'] as $key => $node_value) {
+        $node_full = node_load($node_value->nid);
+        $options[$key] = $node_full->title;
+      }
+    }
+    //dpm($center_operators);
+    
+    // Add a form select with operators and AJAX load with available extensions.
+    //dpm($form_state);
+    //$selected_value = $form_state['operator']['value'];
+    $operator_exposed_field_active = TRUE;
+    if ($operator_exposed_field_active) {
+      // Tell form exposed filter have new field.
+      $form['#info']['filter-call_operator'] = array(
+        'operator' => 'call_operator_op',
+        'value' => 'call_operator',
+        'label' => t('Operator'),
+        'description' => '',
+      );
+      // Add the operator filter form element.
+      $html_suffix = '<div id="operator-extensions"></div>';
+      $form['call_operator'] = array(
+        '#type' => 'select',
+        '#options' => $options,
+        '#default_value' => 0,
+        '#weight' => -100,
+        '#suffix' => $html_suffix,
+        '#ajax' => array(
+          'callback' => 'call_center_get_operator_extensions',
+          'wrapper' => 'operator-extensions',
+          'method' => 'replace',
+          'effect' => 'fade',
+        ),
+      );
+    }
+    dpm($form);
+  }
+}
+
+/* USED WITH VIEWS (NOT USED) */
+function call_center_get_operator_extensions_options($selected_value) {
+  // Retrieve operator extensions.
+  $options = array();
+  $options[0] = t('All extensions');
+  $operator = node_load($selected_value);
+  $op_ext = ($operator) ? $operator->field_operator_extension[LANGUAGE_NONE] : array();
+  foreach ($op_ext as $ext) {
+    $val = $ext['value'];
+    $options[$val] = $val;
+  }
+  // Prepare content.
+  $content = array();
+  $content['call_operator_extensions'] = array(
+    '#type' => 'select',
+    '#options' => $options,
+    '#default_value' => 0,
+    '#weight' => 1,
+  );
+  return $content;
+}
+
+/* USED WITH VIEWS (NOT USED) */
+function call_center_get_operator_extensions(&$form, &$form_state) {
+  $selected_value = $form_state['values']['call_operator'];
+  //dpm($selected_value);
+  $extension_options = call_center_get_operator_extensions_options($selected_value);
+  //$form['call_operator_extensions'] = $extension_options['call_operator_extensions'];
+  $ajax_content = $extension_options;
+  $form_state['rebuild'] = TRUE;
+  // Prepare de AJAX Commands to show response.
+  $commands = array();
+  //$commands[] = ajax_command_html('#operator-extensions', render($ajax_content));
+  $commands[] = ajax_command_html('#operator-extensions', render($ajax_content));
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+
+/**
+ * Implements hook_entity_property_info_alter().
+ */
+function call_center_entity_property_info_alter(&$info) {
+  $properties = &$info['call_center']['properties'];
+  $properties['created'] = array(
+    'label' => t("Date created"),
+    'type' => 'date',
+    'description' => t("The date the entity was posted."),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer call_center entities',
+    'schema field' => 'created',
+  );
+  $properties['changed'] = array(
+    'label' => t("Date changed"),
+    'type' => 'date',
+    'schema field' => 'changed',
+    'description' => t("The date the node was most recently updated."),
+  );
+  $properties['uid'] = array(
+    'label' => t("Author"),
+    'type' => 'user',
+    'description' => t("The author of the Entity."),
+    'setter callback' => 'entity_property_verbatim_set',
+    'setter permission' => 'administer call_center entities',
+    'required' => TRUE,
+    'schema field' => 'uid',
+  );
+}
+
+
+/*******************************************************************************
+ ****************************** Call Center Entity API's *******************************
+ ******************************************************************************/
+
+/**
+ * Access callback for Call Center Entity.
+ */
+function call_center_access($op, $callcenter, $account = NULL, $entity_type = NULL) {
+  global $user;
+
+  if (!isset($account)) {
+    $account = $user;
+  }
+  switch ($op) {
+    case 'create':
+      return user_access('administer call_center entities', $account)
+          || user_access('create call_center entities', $account);
+    case 'view':
+      return user_access('administer call_center entities', $account)
+          || user_access('view call_center entities', $account);
+    case 'edit':
+      return user_access('administer call_center entities')
+          || user_access('edit any call_center entities')
+          || (user_access('edit own call_center entities') && ($callcenter->uid == $account->uid));
+  }
+}
+
+/**
+ * Load a Call Center Entity.
+ */
+function call_center_load($id, $reset = FALSE) {
+  $calls = call_center_load_multiple(array($id), array(), $reset);
+  return reset($calls);
+}
+
+/**
+ * Load multiple galleries based on certain conditions.
+ */
+function call_center_load_multiple($ids = array(), $conditions = array(), $reset = FALSE) {
+  return entity_load('call_center', $ids, $conditions, $reset);
+}
+
+/**
+ * Save Entity.
+ */
+function call_center_save($callcenter) {
+  entity_save('call_center', $callcenter);
+  
+}
+
+/**
+ * Insert and update Entity. Method for pathauto implementation.
+ */
+ /*
+function call_center_insert($callcenter) {
+  entity_save('call_center', $callcenter);
+  module_load_include('inc', 'call_center', 'call_center.pathauto');
+  call_center_update_alias($entity, 'insert');
+}
+function call_center_update($callcenter) {
+  entity_save('call_center', $callcenter);
+  module_load_include('inc', 'call_center', 'call_center.pathauto');
+  call_center_update_alias($entity, 'update');
+}
+*/
+
+/**
+ * Publish Entity
+ */
+function call_center_publish_item($callcenter) {
+  $callcenter->status = 1;
+  call_center_save($callcenter);
+}
+
+/**
+ * Unpublish Entity
+ */
+function call_center_unpublish_item($callcenter) {
+  $callcenter->status = 0;
+  call_center_save($callcenter);
+}
+
+/**
+ * Delete single Entity.
+ */
+function call_center_delete($callcenter) {
+  //Delete the entity
+  entity_delete('call_center', entity_id('call_center' ,$callcenter));
+  //pathauto_entity_path_delete_all('call_center', $callcenter, "call_center/{$callcenter->id}");
+}
+
+/**
+ * Delete multiple Entities.
+ */
+function call_center_delete_multiple($callcenter_ids) {
+  entity_delete_multiple('call_center', $callcenter_ids);
+}
+/**
+  * Implements hook_field_extra_fields()
+  */
+function call_center_field_extra_fields() {
+  $name_field_info = array(
+    'label' => t('Name'),
+    'description' => t('Entity name'),
+    'weight' => 0,
+  );
+  $call_date_field_info = array(
+    'label' => t('Call date'),
+    'description' => t('The date and time of call (in unix timestamp)'),
+    'weight' => 1,
+  );
+  $call_source_phone_field_info = array(
+    'label' => t('Source phone'),
+    'description' => t('The call source phone'),
+    'weight' => 2,
+  );
+  $call_destination_phone_field_info = array(
+    'label' => t('Destination phone'),
+    'description' => t('The call destination phone'),
+    'weight' => 3,
+  );
+  $call_status_field_info = array(
+    'label' => t('Status'),
+    'description' => t('The call status'),
+    'weight' => 4,
+  );
+  $call_duration_field_info = array(
+    'label' => t('Duration'),
+    'description' => t('The call duration'),
+    'weight' => 5,
+  );
+  $form_elements['name'] = $name_field_info; 
+  $form_elements['call_date'] = $call_date_field_info;
+  $form_elements['call_source_phone'] = $call_source_phone_field_info;
+  $form_elements['call_destination_phone'] = $call_destination_phone_field_info;
+  $form_elements['call_status'] = $call_status_field_info;
+  $form_elements['call_duration'] = $call_duration_field_info;
+  $display_elements['name'] = $name_field_info;
+  $display_elements['call_date'] = $call_date_field_info;
+  $display_elements['call_source_phone'] = $call_source_phone_field_info;
+  $display_elements['call_destination_phone'] = $call_destination_phone_field_info;
+  $display_elements['call_status'] = $call_status_field_info;
+  $display_elements['call_duration'] = $call_duration_field_info;
+  $extra_fields['call_center']['client']['form'] = $form_elements; 
+  $extra_fields['call_center']['client']['display'] = $display_elements;
+  return $extra_fields;
+}
+
+/*******************************************************************************
+ ****************************** Call Center Entity Type API's ********************************
+ ******************************************************************************/
+
+/**
+ * Access callback for Call Center Entity Type.
+ */
+function call_center_type_access($op, $entity = NULL) {
+  return user_access('administer call_center types');
+}
+
+/**
+ * Load Call Center Entity Type.
+ */
+function call_center_type_load($callcenter_type) {
+  return call_center_types($callcenter_type);
+}
+
+/**
+ * List of Call Center Entity Types.
+ */
+function call_center_types($type_name = NULL) {
+  $types = entity_load_multiple_by_name('call_center_type', isset($type_name) ? array($type_name) : FALSE);
+  return isset($type_name) ? reset($types) : $types;
+}
+
+/**
+ * Save Call Center Entity type entity.
+ */
+function call_center_type_save($callcenter_type) {
+  entity_save('call_center_type', $callcenter_type);
+}
+
+/**
+ * Delete single case type.
+ */
+function call_center_type_delete($callcenter_type) {
+  entity_delete('call_center_type', entity_id('call_center_type' ,$callcenter_type));
+  //Delete the entity fields (Not implemented)
+  $callcenter_type_machine_name = $callcenter_type->type;
+}
+
+/**
+ * Delete multiple case types.
+ */
+function call_center_type_delete_multiple($callcenter_type_ids) {
+  entity_delete_multiple('call_center_type', $callcenter_type_ids);
+}
+
+/**
+  * Implements hook_views_api().
+  */
+function call_center_views_api() {
+  return array(
+    'api' => 3,
+    'path' => drupal_get_path('module', 'call_center'),
+  );
+}
+/**
+* ENTITY THEME AND PREPROCESS FUNCTIONS 
+*/
+/**
+ * Implements hook_theme().
+ * Template functions definition and passed arguments.
+ */
+
+function call_center_theme($existing, $type, $theme, $path) {
+  $types = array_keys(entity_crud_get_info());
+  $pattern = '(' . implode('|', $types) . ')(\.|__)';
+  return array(
+    'call_center' => array(
+      'render element' => 'elements',
+      'template' => 'call_center',
+      'pattern' => $pattern,
+    ),
+  );
+}
+
+/**
+ * Preprocess the view info for call_center theme (call_center.tpl.php)
+ */
+function call_center_preprocess_entity(&$variables){
+  drupal_add_library('system', 'drupal.ajax');
+  $content = $variables['content'];
+  $call_center = $variables['elements']['#entity'];
+  $variables['content'] = $content;
+  drupal_add_css(drupal_get_path('module', 'call_center').'/css/callcenter.css');
+  drupal_add_js(drupal_get_path('module', 'call_center').'/js/callcenter.selection.js');
+  //dpm($variables);
+}
+
+/**
+* VIEWS SPECIAL OPERATIONS
+*/  
+/**
+ * Implementation of hook_action_info().
+ */
+function call_center_action_info() {
+  $action = array(
+    'call_center_delete_action' => array(
+      'label' => t('Delete Call Center Entity'),
+      'type' => 'call_center',
+      'configurable' => FALSE,
+      'triggers' => array('any'),
+    ),
+    'call_center_publish_item_action' => array(
+      'label' => t('Publish Call Center Entity'),
+      'type' => 'call_center',
+      'configurable' => FALSE,
+      'triggers' => array('any'),
+    ),
+    'call_center_unpublish_item_action' => array(
+      'label' => t('Unpublish Call Center Entity'),
+      'type' => 'call_center',
+      'configurable' => FALSE,
+      'triggers' => array('any'),
+    ),
+ );
+ return $action;
+}
+
+/**
+ * Action function for call_center_delete.
+ */
+function call_center_delete_action(&$entity, $context = array()) {
+  //dpm($entity);
+  call_center_delete($entity);
+}
+/**
+ * Action function for call_center_publish_item.
+ */
+function call_center_publish_item_action(&$entity, $context = array()) {
+  //dpm($entity);
+  call_center_publish_item($entity);
+}
+/**
+ * Action function for call_center_unpublish_item.
+ */
+function call_center_unpublish_item_action(&$entity, $context = array()) {
+  //dpm($entity);
+  call_center_unpublish_item($entity);
+}

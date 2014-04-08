@@ -1,0 +1,252 @@
+<?php
+
+/**
+ * Implements hook_schema().
+ */
+function call_center_schema() {
+  $schema = array();
+
+  $schema['call_center'] = array(
+    'description' => 'The base table for tasks.',
+    'fields' => array(
+      'id' => array(
+        'description' => 'The primary identifier for the entity.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'type' => array(
+        'description' => 'The type (bundle) of this task.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'name' => array(
+        'description' => 'The entity name or title.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      
+      'call_date' => array(
+        'description' => 'The date and time of call (in unix timestamp).',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'call_source_phone' => array(
+        'description' => 'The call source phone.',
+        'type' => 'varchar',
+        'length' => 16,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'call_destination_phone' => array(
+        'description' => 'The call destination phone.',
+        'type' => 'varchar',
+        'length' => 16,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'call_status' => array(
+        'description' => 'The call status.',
+        'type' => 'varchar',
+        'length' => 20,
+        'not null' => TRUE,
+        'default' => 'Fail',
+      ),
+      'call_duration' => array(
+        'description' => 'The call duration.',
+        'type' => 'varchar',
+        'length' => 20,
+        'not null' => TRUE,
+        'default' => '00:00:00',
+      ),
+      'uid' => array(
+        'description' => 'ID of Drupal user creator.',
+        'type' => 'int',
+        'not null' => TRUE,
+      ),
+      'created' => array(
+        'description' => 'The Unix timestamp when the task was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'changed' => array(
+        'description' => 'The Unix timestamp when the task was most recently saved.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'status' => array(
+        'description' => 'The entity publish state.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+    ),
+    'primary key' => array('id'),
+  );
+
+  $schema['call_center_type'] = array(
+    'description' => 'Stores information about all defined Call Center entity types.',
+    'fields' => array(
+      'id' => array(
+        'type' => 'serial',
+        'not null' => TRUE,
+        'description' => 'Primary Key: Unique task type ID.',
+      ),
+      'type' => array(
+        'description' => 'The machine-readable name of this type.',
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+      ),
+      'label' => array(
+        'description' => 'The human-readable name of this type.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'description' => array(
+        'description' => 'A brief description of this type.',
+        'type' => 'text',
+        'not null' => TRUE,
+        'size' => 'medium',
+        'translatable' => TRUE,
+      ),
+    ) + entity_exportable_schema_fields(),
+    'primary key' => array('id'),
+    'unique keys' => array(
+      'type' => array('type'),
+    ),
+  );
+
+  return $schema;
+}
+/**
+* Implements hook_install()
+*/
+function call_center_install() {
+  //Taxonomy: creation of vocabulary 'call_centers'
+  $vocabularies = taxonomy_vocabulary_get_names();
+  $vid = FALSE;
+  if(isset($vocabularies['call_centers'])){
+    $voc_obj = (object) $vocabularies['call_centers'];
+    $vid = $voc_obj->vid;
+  }
+  if(!$vid){
+    //Taxonomy Vocabulary creation
+    $vocabulary = array(
+      'name' => t('Call Centers'),
+      'machine_name' => 'call_centers',
+      'description' => t('List of system call centers'),
+      'hierarchy' => 1,
+      'module' => 'call_center',
+      'weight' => 1
+    );
+    $vocabulary = (object) $vocabulary;
+    taxonomy_vocabulary_save($vocabulary);
+    $vid = $vocabulary->vid;
+  }
+  
+  //Creates the entity type (Call)
+  $callcenter_type = (object)array(
+    'type' => 'call',
+    'label' => t('Call'),
+    'description' => 'A call base entity.',
+    'is_new' => TRUE,
+  );
+  entity_save('call_center_type', $callcenter_type);
+  
+  /*
+  ** CENTER FIELD (CALL TYPE)
+  **/
+  // Center (Taxonomy term reference).
+  $field = field_info_field('call_center');
+  if(empty($field)){
+    $field = array(
+      'field_name' => 'call_center',
+      'type' => 'taxonomy_term_reference',
+      'settings' => array(
+        'allowed_values' => array(
+          array(
+            'vocabulary' => 'call_centers',
+            'parent' => 0
+          )
+        )
+      ),
+    );
+    field_create_field($field);
+  }
+  // Center instance for Calls.
+  $instance = field_info_instance('call_center', 'call_center', 'call');
+  if(empty($instance)){
+    $instance = array(
+      'field_name' => 'call_center',
+      'entity_type' => 'call_center',
+      'bundle' => 'call',
+      'label' => t('Center'),
+      'description' => '',
+      'required' => TRUE,
+      'widget' => array(
+        'type' => 'options_select',
+        'weight' => -10,
+      )
+    );
+    $instance = field_create_instance($instance);
+  }
+  // Center instance for user.
+  $instance = field_info_instance('user', 'call_center', 'user');
+  if(empty($instance)){
+    $instance = array(
+      'field_name' => 'call_center',
+      'entity_type' => 'user',
+      'bundle' => 'user',
+      'label' => t('Center'),
+      'description' => '',
+      'required' => TRUE,
+      'widget' => array(
+        'type' => 'options_select',
+        'weight' => -10,
+      )
+    );
+    $instance = field_create_instance($instance);
+  }
+}
+
+/**
+* Implements hook_uninstall()
+*/
+function call_center_uninstall() {
+  //Delete the custom field instance
+  $instance_center = field_info_instance('call_center', 'call_center', 'call');
+  if(!empty($instance_center)) field_delete_instance($instance_center);
+  $instance_center = field_info_instance('user', 'call_center', 'user');
+  if(!empty($instance_center)) field_delete_instance($instance_center);
+  
+  //Delete the taxonomy vocabulary created in the module
+  $vocabularies = taxonomy_vocabulary_get_names();
+  $vid = FALSE;
+  if(isset($vocabularies['call_centers'])){
+    $voc_obj = (object) $vocabularies['call_centers'];
+    $vid = $voc_obj->vid;
+  }
+  if($vid) taxonomy_vocabulary_delete($vid);
+}
+
+/**
+* Implements hook_disable()
+*/
+function call_center_disable() {
+  //Delete all the call center item and its fields.
+  $all_call_center = entity_load('call_center');
+  foreach($all_call_center as $entity_item){
+    entity_delete('call_center', entity_id('call_center', $entity_item));
+  }
+}
+

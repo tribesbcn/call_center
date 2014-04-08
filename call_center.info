@@ -1,0 +1,12 @@
+name = Call Center
+description = Creates a module to import CSV information from phone and work with the information
+package = TRT Development
+core = 7.x
+
+dependencies[] = entity
+dependencies[] = views
+
+files[] = call_center.module
+files[] = call_center.install
+
+files[] = call_center.controller.inc

@@ -1,0 +1,35 @@
+
+.gallery-form-permissions .fieldset-wrapper
+{
+	overflow:hidden;
+}
+
+.gallery-form-download .fieldset-wrapper
+{
+  overflow:hidden;
+}
+
+.gallery-form-permissions .fieldset-wrapper input
+{
+	float:left;
+	margin-top:60px;
+}
+
+.gallery-form-download .fieldset-wrapper input
+{
+  float:left;
+  margin-top:60px;
+}
+
+.form-item-system-users,.form-item-gallery-users,.form-item-system-users-download,.form-item-gallery-users-download
+{
+	_border:solid 1px red;
+	float:left;
+	margin-right:10px;
+}
+
+.form-item-system-users select,.form-item-gallery-users select,.form-item-system-users-download select,.form-item-gallery-users-download select
+{
+	_border:solid 1px red;
+	width:100%;
+}
