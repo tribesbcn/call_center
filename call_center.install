@@ -29,7 +29,7 @@ function call_center_schema() {
         'not null' => TRUE,
         'default' => '',
       ),
-      
+
       'call_date' => array(
         'description' => 'The date and time of call (in unix timestamp).',
         'type' => 'int',
@@ -39,14 +39,14 @@ function call_center_schema() {
       'call_source_phone' => array(
         'description' => 'The call source phone.',
         'type' => 'varchar',
-        'length' => 16,
+        'length' => 20,
         'not null' => TRUE,
         'default' => '',
       ),
       'call_destination_phone' => array(
         'description' => 'The call destination phone.',
         'type' => 'varchar',
-        'length' => 16,
+        'length' => 20,
         'not null' => TRUE,
         'default' => '',
       ),
@@ -153,7 +153,7 @@ function call_center_install() {
     taxonomy_vocabulary_save($vocabulary);
     $vid = $vocabulary->vid;
   }
-  
+
   //Creates the entity type (Call)
   $callcenter_type = (object)array(
     'type' => 'call',
@@ -162,7 +162,7 @@ function call_center_install() {
     'is_new' => TRUE,
   );
   entity_save('call_center_type', $callcenter_type);
-  
+
   /*
   ** CENTER FIELD (CALL TYPE)
   **/
@@ -228,7 +228,7 @@ function call_center_uninstall() {
   if(!empty($instance_center)) field_delete_instance($instance_center);
   $instance_center = field_info_instance('user', 'call_center', 'user');
   if(!empty($instance_center)) field_delete_instance($instance_center);
-  
+
   //Delete the taxonomy vocabulary created in the module
   $vocabularies = taxonomy_vocabulary_get_names();
   $vid = FALSE;

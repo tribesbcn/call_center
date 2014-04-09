@@ -4,10 +4,8 @@
  * Call center Entity view callback.
  */
 function call_center_view($call_info, $view_mode = 'full') {
-  //dpm($call_info);
   drupal_set_title(entity_label('call_center', $call_info));
   $ev = entity_view('call_center', array(entity_id('call_center', $call_info) => $call_info), $view_mode);
-  //dpm($ev);
   return $ev;
 }
 
@@ -41,6 +39,22 @@ function call_center_admin_view($form, &$form_state) {
 }
 
 function call_center_filter_form_submit($form, &$form_state) {
+  // Retrieve the form_state values and save it in session.
+  $call_source_phone_value = isset($form_state['values']['call_source_phone']) ? $form_state['values']['call_source_phone'] : '';
+  $call_destination_phone_value = isset($form_state['values']['call_destination_phone']) ? $form_state['values']['call_destination_phone'] : '';
+  $call_operator_value = (isset($form_state['values']['call_operator'])) ? $form_state['values']['call_operator'] : 0;
+  $call_operator_ext_value = (isset($form_state['values']['call_operator_extensions']) && $form_state['values']['call_operator_extensions'] != '0') ? array($form_state['values']['call_operator_extensions']) : array();
+  if (!count($call_operator_ext_value)) {
+    $operator_available_extensions = $form['call_operator_extensions']['#options'];
+    foreach ($operator_available_extensions as $key => $value) {
+      $call_operator_ext_value[] = $key;
+    }
+  }
+  _call_center_session('source_phone', $call_source_phone_value);
+  _call_center_session('destination_phone', $call_destination_phone_value);
+  _call_center_session('operator', $call_operator_value);
+  _call_center_session('operator_ext', $call_operator_ext_value);
+  /*
   $user_call_info = _call_center_get_user_call_info();
   $center_tid = $user_call_info['center_tid'];
   $call_ids = $user_call_info['call_ids'];
@@ -55,13 +69,35 @@ function call_center_filter_form_submit($form, &$form_state) {
   $html_table = _call_center_create_sortable_table($header, $results);
   
   //$exposed_filter_form = drupal_get_form('call_center_create_exposed_filter_admin_form', $center_tid, $call_ids);
-  $form['filter'] = _call_center_filter_form($form, $form_state, $center_tid, $call_ids);
+  _call_center_filter_form($form, $form_state, $center_tid, $call_ids);
   $form['#submit'][] = 'call_center_filter_form_submit';
   // Print the table result.
   $html = render($exposed_filter_form);
   $html .= $html_table;
-  return $html;
+  $form['table'] = array(
+    '#type' => 'markup',
+    '#markup' => $html,
+    '#weight' => 200,
+  );
+   */
+  //return $html;
   //return $form;
+}
+
+function _call_center_session($key, $value = NULL) {
+  static $storage;
+  if ($value != NULL) {
+    $storage[$key] = $value ;
+    $_SESSION['call_center'][$key] = $value ;
+  }
+  else if (empty($storage[$key]) && isset($_SESSION['call_center'][$key])) {
+    $storage[$key] = $_SESSION['call_center'][$key];
+  }
+  // Return values (special tratement for operator_ext key)
+  if ($key == 'operator_ext' && is_array($storage[$key]) && count($storage[$key]) > 0) {
+    return (count($storage[$key]) == 1) ? reset($storage[$key]) : 0;
+  }
+  return $storage[$key];
 }
 
 function _call_center_table_header() {
@@ -133,8 +169,12 @@ function _call_center_get_user_call_info(){
 }
 
 function _call_center_filter_form(&$form, &$form_state, $center_tid, $call_ids) {
-  // Regular filters
-  $call_source_phone_value = isset($form_state['values']['call_source_phone']) ? $form_state['values']['call_source_phone'] : '';
+  // Retrieve the last saved session values.
+  $call_source_phone_value = _call_center_session('source_phone');
+  $call_destination_phone_value = _call_center_session('destination_phone');
+  $call_operator_value = _call_center_session('operator');
+  $call_operator_ext_value = _call_center_session('operator_ext');
+  // Regular filters.
   $form['call_source_phone'] = array(
     '#type' => 'textfield',
     '#title' => t('Source'),
@@ -144,7 +184,6 @@ function _call_center_filter_form(&$form, &$form_state, $center_tid, $call_ids) 
     '#default_value' => $call_source_phone_value,
     '#weight' => 1,
   );
-  $call_destination_phone_value = isset($form_state['values']['call_destination_phone']) ? $form_state['values']['call_destination_phone'] : '';
   $form['call_destination_phone'] = array(
     '#type' => 'textfield',
     '#title' => t('Destination'),
@@ -155,7 +194,7 @@ function _call_center_filter_form(&$form, &$form_state, $center_tid, $call_ids) 
     '#weight' => 2,
   );
   
-  // Retrieve the center operators form DB
+  // Retrieve the center operators form DB.
   $field_query = new EntityFieldQuery;
   $center_operators = $field_query
     ->entityCondition('entity_type', 'node')
@@ -173,18 +212,15 @@ function _call_center_filter_form(&$form, &$form_state, $center_tid, $call_ids) 
   
   $operator_exposed_field_active = TRUE;
   if ($operator_exposed_field_active) {
-    $call_operator_value = isset($form_state['values']['call_operator']) ? $form_state['values']['call_operator'] : key($options);
     // Add the operator filter form element.
-    $html_suffix = '<div id="operator-extensions"></div>';
+    $call_operator_value = (isset($form_state['values']['call_operator'])) ? $form_state['values']['call_operator'] : $call_operator_value;
     $form['call_operator'] = array(
       '#type' => 'select',
       '#title' => t('Operator'),
       '#options' => $options,
-      '#default_value' => $call_operator_value,
+      '#default_value' => _call_center_session('operator'),
       '#weight' => 5,
-      //'#suffix' => $html_suffix,
       '#ajax' => array(
-        //'callback' => 'call_center_get_operator_extensions',
         'event' => 'change',
         'callback' => '_call_center_ajax_extensions',
         'wrapper' => 'operator-extensions',
@@ -196,7 +232,7 @@ function _call_center_filter_form(&$form, &$form_state, $center_tid, $call_ids) 
       '#type' => 'select',
       '#title' => t('Operator extensions'),
       '#options' => _call_center_get_extensions($call_operator_value),
-      '#default_value' => 0,
+      '#default_value' => _call_center_session('operator_ext'),
       '#weight' => 6,
       '#prefix' => '<div id="operator-extensions">',
       '#suffix' => '</div>',
@@ -240,7 +276,6 @@ function _call_center_get_extensions($key = '') {
 
 /* Added drupal_get_form call to module hook_menu (Not used) */
 function call_center_create_exposed_filter_admin_form($form, &$form_state, $center_tid, $call_ids) {
-  dpm($form_state);
   $form = array();
   //$form['filter'] = _call_center_filter_form($form, $form_state, $center_tid, $call_ids);
   _call_center_filter_form($form, $form_state, $center_tid, $call_ids);
