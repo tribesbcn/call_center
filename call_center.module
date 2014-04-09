@@ -234,7 +234,7 @@ function call_center_menu() {
     'access arguments' => array('administer call_center entities'),
     'weight' => 1,
     'type' => MENU_NORMAL_ITEM,
-    'file' => 'call_center.pages.inc',
+    'file' => 'call_center.admin_ui.inc',
   );
   // *** END MENU OPTIONS FOR ENTITY ADMINISTRATION ***
   
