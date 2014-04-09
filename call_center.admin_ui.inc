@@ -134,31 +134,6 @@ function _call_center_create_sortable_table($header, $results) {
   return $html;
 }
 
-function _call_center_get_user_call_info(){
-  // Retrieve user center information.
-  global $user;
-  $user = user_load($user->uid);
-  $center_tid = (isset($user->call_center) && is_array($user->call_center) && count($user->call_center) > 0) ? $user->call_center[LANGUAGE_NONE][0]['tid'] : 0;
-  // Execute DB query.
-  $field_query = new EntityFieldQuery;
-  $center_calls = $field_query
-    ->entityCondition('entity_type', 'call_center')
-    ->propertyCondition('type', 'call')
-    ->fieldCondition('call_center', 'tid', $center_tid, '=')
-    ->execute();
-  $call_ids = array();
-  $call_ids[] = 0;
-  if (is_array($center_calls) && isset($center_calls['call_center'])) {
-    foreach ($center_calls['call_center'] as $call_id => $call_info) {
-      $call_ids[] = $call_id;
-    }
-  }
-  return array(
-    'center_tid' => $center_tid,
-    'call_ids' => $call_ids,
-  );
-}
-
 function _call_center_filter_form(&$form, &$form_state, $center_tid, $call_ids) {
   // Retrieve the last saved session values.
   $call_source_phone_value = _call_center_session('source_phone');
