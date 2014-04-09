@@ -129,7 +129,7 @@ function call_center_autocomplete_source_list($string = '') {
     }
   }
   $query = db_select('call_center', 'cc')
-    ->fields ('cc', array ('id', 'call_source_phone'))
+    ->fields ('cc', array ('id', 'call_source_phone'))->distinct()
     ->condition('id', $call_ids,'IN')
     ->condition('call_source_phone', db_like($string) . '%', 'LIKE');
   $results = $query->execute();

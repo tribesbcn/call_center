@@ -118,23 +118,30 @@ function call_center_admin_add_page() {
  * Page to show import csv initial form.
  */
 function call_center_admin_import_csv_form($form, &$form_state) {
-  $form['csv_file'] = array(
-    '#type' => 'file',
-    '#title' => t('Upload CSV File'),
-    '#description' => t('The CSV file exported from the unit. Only CSV extension allowed.'),
-    '#title_display' => 'before',
-    '#weight' => 1,
-    '#upload_validators' => array(
-      'file_validate_extensions' => array('csv'),
-    ),
-  );
-  $form['actions'] = array('#type' => 'actions');
-  $form['actions']['submit'] = array(
-    '#type' => 'submit',
-    '#value' => t('Import CSV File'),
-    '#weight' => 40,
-  );
-  
+  drupal_set_title(t('Import CSV'));
+  if(isset($form_state['values']['final_content']) && !empty($form_state['values']['final_content'])) {
+    //$form['submission'] = array(
+      //'#markup' => $form_state['values']['final_content'],
+    //);
+    return $form_state['values']['final_content'];
+  }else{
+    $form['csv_file'] = array(
+      '#type' => 'file',
+      '#title' => t('Upload CSV File'),
+      '#description' => t('The CSV file exported from the unit. Only CSV extension allowed.'),
+      '#title_display' => 'before',
+      '#weight' => 1,
+      '#upload_validators' => array(
+        'file_validate_extensions' => array('csv'),
+      ),
+    );
+    $form['actions'] = array('#type' => 'actions');
+    $form['actions']['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Import CSV File'),
+      '#weight' => 40,
+    );
+  }
   return $form;
 }
 
@@ -158,8 +165,9 @@ function call_center_admin_import_csv_form_validate($form, &$form_state) {
  */
 function call_center_admin_import_csv_form_submit($form, &$form_state) {
   global $user;
+  $content = array();
   $user = user_load($user->uid);
-  $center_tid = $user->field_user_call_center[LANGUAGE_NONE][0]['tid'];
+  $center_tid = (isset($user->call_center) && is_array($user->call_center) && count($user->call_center) > 0) ? $user->call_center[LANGUAGE_NONE][0]['tid'] : 0;
   $validators = array('file_validate_extensions' => array('csv'));
   $file = file_save_upload('csv_file', $validators, FALSE);
   //dpm($file);
@@ -186,10 +194,10 @@ function call_center_admin_import_csv_form_submit($form, &$form_state) {
       $call_info->type = 'call';
       $call_info->name = $entity_name;
       $call_info->call_date = $call_date_timestamp;
-      $call_info->call_source_phone = $call_source_phone;
-      $call_info->call_destination_phone = $call_destination_phone;
-      $call_info->call_status = $call_status;
-      $call_info->call_duration = $call_duration;
+      $call_info->call_source_phone = (strlen($call_source_phone) < 20) ? $call_source_phone : substr($call_source_phone, 0, 20);
+      $call_info->call_destination_phone = (strlen($call_destination_phone) < 20) ? $call_destination_phone : substr($call_destination_phone, 0, 20);
+      $call_info->call_status = (strlen($call_status) < 20) ? $call_status : substr($call_status, 0, 20);
+      $call_info->call_duration = (strlen($call_duration) < 20) ? $call_duration : substr($call_duration, 0, 20);
       $call_info->uid = $user->uid;
       $call_info->status = TRUE;
       $call_info->call_center[LANGUAGE_NONE][0]['tid'] = $center_tid;
@@ -198,9 +206,16 @@ function call_center_admin_import_csv_form_submit($form, &$form_state) {
     }
   }
   dpm($csv_info);
+  fclose($handle);
   //$contents = fread($handle, filesize($file_path));
   //dpm($contents);
-  fclose($handle);
+  $result_content['final_msg'] = array(
+    '#type' => 'markup',
+    '#markup' => '<h2>' . t('CSV import finished!') . '</h2>',
+  );
+  $final_content = array_merge($content, $result_content);
+  $form_state['values']['final_content'] = $final_content;
+  $form_state['rebuild'] = TRUE;
 }
 
 /**
