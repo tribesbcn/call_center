@@ -7,10 +7,10 @@ function call_center_admin_view($form, &$form_state) {
   $header = _call_center_table_header();
   // Execute query.
   $query = db_select('call_center', 'cc')
-    ->condition('id', $call_ids,'IN')
     ->extend('PagerDefault')->limit(25)
     ->extend('TableSort')->orderByHeader($header)
-    ->fields ('cc', array ('id', 'call_date', 'call_source_phone', 'call_destination_phone', 'call_duration', 'call_status'));
+    ->fields ('cc', array ('id', 'call_date', 'call_source_phone', 'call_destination_phone', 'call_duration', 'call_status'))
+    ->condition('id', $call_ids,'IN');
   $results = $query->execute();
   $html_table = _call_center_create_sortable_table($header, $results);
   
@@ -31,7 +31,7 @@ function call_center_admin_view($form, &$form_state) {
 
 function call_center_filter_form_submit($form, &$form_state) {
   // Retrieve the form_state values and save it in session.
-  $call_source_phone_value = isset($form_state['values']['call_source_phone']) ? $form_state['values']['call_source_phone'] : '';
+  $call_source_phone_value = (isset($form_state['values']['call_source_phone'])) ? $form_state['values']['call_source_phone'] : '';
   $call_destination_phone_value = isset($form_state['values']['call_destination_phone']) ? $form_state['values']['call_destination_phone'] : '';
   $call_operator_value = (isset($form_state['values']['call_operator'])) ? $form_state['values']['call_operator'] : 0;
   $call_operator_ext_value = (isset($form_state['values']['call_operator_extensions']) && $form_state['values']['call_operator_extensions'] != '0') ? array($form_state['values']['call_operator_extensions']) : array();
@@ -76,19 +76,17 @@ function call_center_filter_form_submit($form, &$form_state) {
 }
 
 function _call_center_session($key, $value = NULL) {
-  static $storage;
-  if ($value != NULL) {
-    $storage[$key] = $value ;
-    $_SESSION['call_center'][$key] = $value ;
+  if (!is_null($value)) {
+    $_SESSION['call_center'][$key] = $value;
   }
-  else if (empty($storage[$key]) && isset($_SESSION['call_center'][$key])) {
-    $storage[$key] = $_SESSION['call_center'][$key];
+  else if (isset($_SESSION['call_center'][$key])) {
+    $key_value = $_SESSION['call_center'][$key];
+    // Return values (special tratement for operator_ext key)
+    if ($key == 'operator_ext' && is_array($key_value) && count($key_value) > 0) {
+      return (count($key_value) == 1) ? reset($key_value) : 0;
+    }
+    return $key_value;
   }
-  // Return values (special tratement for operator_ext key)
-  if ($key == 'operator_ext' && is_array($storage[$key]) && count($storage[$key]) > 0) {
-    return (count($storage[$key]) == 1) ? reset($storage[$key]) : 0;
-  }
-  return $storage[$key];
 }
 
 function _call_center_table_header() {
