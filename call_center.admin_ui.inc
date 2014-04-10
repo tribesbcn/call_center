@@ -1,9 +1,17 @@
 <?php
 
 function call_center_admin_view($form, &$form_state) {
+  // Retrieve the user information.
   $user_call_info = _call_center_get_user_call_info();
   $center_tid = $user_call_info['center_tid'];
   $call_ids = $user_call_info['call_ids'];
+  // Retrieve the last submited session values.
+  $call_source_phone_value = _call_center_session('source_phone');
+  $call_destination_phone_value = _call_center_session('destination_phone');
+  $call_operator_value = _call_center_session('operator');
+  $call_operator_ext_value = _call_center_session('operator_ext');
+  $call_operator_ext_full = _call_center_session('operator_ext_full');
+  
   $header = _call_center_table_header();
   // Execute query.
   $query = db_select('call_center', 'cc')
@@ -11,15 +19,33 @@ function call_center_admin_view($form, &$form_state) {
     ->extend('TableSort')->orderByHeader($header)
     ->fields ('cc', array ('id', 'call_date', 'call_source_phone', 'call_destination_phone', 'call_duration', 'call_status'))
     ->condition('id', $call_ids,'IN');
+  if ($call_source_phone_value != '') $query->condition('call_source_phone', db_like($call_source_phone_value) . '%', 'LIKE');
+  if ($call_destination_phone_value != '') $query->condition('call_destination_phone', db_like($call_destination_phone_value) . '%', 'LIKE');
+  if ($call_operator_value != 0) {
+    if ($call_operator_ext_value != 0) {
+      $query->condition('call_destination_phone', $call_operator_ext_value, '=');
+    }
+    else {
+      // Retrieve all operator extensions and create the query
+      $or_condition = db_or();
+      $num_extensions = 0;
+      foreach($call_operator_ext_full as $ext) {
+        if ($ext != '0') {
+          $or_condition->condition('call_destination_phone', $ext, '=');
+          $num_extensions++;
+        }
+      }
+      if ($num_extensions) {
+        $query->condition($or_condition);
+      }
+    }
+  }
   $results = $query->execute();
   $html_table = _call_center_create_sortable_table($header, $results);
-  
-  //$exposed_filter_form = drupal_get_form('call_center_create_exposed_filter_admin_form', $center_tid, $call_ids);
   _call_center_filter_form($form, $form_state, $center_tid, $call_ids);
   $form['#submit'][] = 'call_center_filter_form_submit';
   // Print the table result.
-  $html = render($exposed_filter_form);
-  $html .= $html_table;
+  $html = $html_table;
   $form['table'] = array(
     '#type' => 'markup',
     '#markup' => $html,
@@ -86,6 +112,9 @@ function _call_center_session($key, $value = NULL) {
       return (count($key_value) == 1) ? reset($key_value) : 0;
     }
     return $key_value;
+  }
+  else if ($key == 'operator_ext_full') {
+    return isset($_SESSION['call_center']['operator_ext']) ? $_SESSION['call_center']['operator_ext'] : 0;
   }
 }
 
