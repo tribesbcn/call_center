@@ -26,7 +26,7 @@ function call_center_admin_view($form, &$form_state) {
       $query->condition('call_destination_phone', $call_operator_ext_value, '=');
     }
     else {
-      // Retrieve all operator extensions and create the query
+      // Retrieve all operator extensions and create the query.
       $or_condition = db_or();
       $num_extensions = 0;
       foreach($call_operator_ext_full as $ext) {
@@ -130,24 +130,48 @@ function _call_center_table_header() {
   );
 }
 
+function _call_center_sum_duration_time($time1, $time2) {
+  $times = array($time1, $time2);
+  $seconds = 0;
+  foreach ($times as $time) {
+    list($hour,$minute,$second) = explode(':', $time);
+    $seconds += $hour*3600;
+    $seconds += $minute*60;
+    $seconds += $second;
+  }
+  $hours = floor($seconds/3600);
+  $seconds -= $hours*3600;
+  $minutes  = floor($seconds/60);
+  $seconds -= $minutes*60;
+  // return "{$hours}:{$minutes}:{$seconds}";
+  return sprintf('%02d:%02d:%02d', $hours, $minutes, $seconds);
+}
+
 function _call_center_create_sortable_table($header, $results) {
   // Prepare table rows.
   $rows = array();
+  $num_calls = 0;
+  $total_duration = '00:00:00';
   foreach ($results as $call) {
     $edit_link = l('<img src="/sites/default/graphics/admin/application--pencil.png" title="Edit" alt="Edit"/>', 'call_center/'. $call->id .'/edit', array('html' => TRUE));
     $delete_link = l('<img src="/sites/default/graphics/admin/cross-script.png" title="Delete" alt="Delete"/>', 'call_center/'. $call->id .'/delete', array('html' => TRUE));
+    $call_duration = $call->call_duration;
     $rows[] = array(
       'data' => array(
         $call->id, 
         format_date($call->call_date), 
         $call->call_source_phone, 
         $call->call_destination_phone, 
-        $call->call_duration,
+        $call_duration,
         $call->call_status,
         $edit_link . ' ' . $delete_link,
       ),
     );
+    $num_calls++;
+    $total_duration = _call_center_sum_duration_time($total_duration, $call_duration);
   }
+  dpm($num_calls);
+  dpm($total_duration);
   $html = theme('table', array(
     'header' => $header,
     'rows'=>$rows,
