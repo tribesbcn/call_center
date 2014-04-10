@@ -9,38 +9,13 @@ function call_center_admin_view($form, &$form_state) {
   $call_source_phone_value = _call_center_session('source_phone');
   $call_destination_phone_value = _call_center_session('destination_phone');
   $call_operator_value = _call_center_session('operator');
+  $call_max_minutes_value = _call_center_session('max_minutes');
   $call_operator_ext_value = _call_center_session('operator_ext');
   $call_operator_ext_full = _call_center_session('operator_ext_full');
   
-  $header = _call_center_table_header();
-  // Execute query.
-  $query = db_select('call_center', 'cc')
-    ->extend('PagerDefault')->limit(25)
-    ->extend('TableSort')->orderByHeader($header)
-    ->fields ('cc', array ('id', 'call_date', 'call_source_phone', 'call_destination_phone', 'call_duration', 'call_status'))
-    ->condition('id', $call_ids,'IN');
-  if ($call_source_phone_value != '') $query->condition('call_source_phone', db_like($call_source_phone_value) . '%', 'LIKE');
-  if ($call_destination_phone_value != '') $query->condition('call_destination_phone', db_like($call_destination_phone_value) . '%', 'LIKE');
-  if ($call_operator_value != 0) {
-    if ($call_operator_ext_value != 0) {
-      $query->condition('call_destination_phone', $call_operator_ext_value, '=');
-    }
-    else {
-      // Retrieve all operator extensions and create the query.
-      $or_condition = db_or();
-      $num_extensions = 0;
-      foreach($call_operator_ext_full as $ext) {
-        if ($ext != '0') {
-          $or_condition->condition('call_destination_phone', $ext, '=');
-          $num_extensions++;
-        }
-      }
-      if ($num_extensions) {
-        $query->condition($or_condition);
-      }
-    }
-  }
-  $results = $query->execute();
+  $header = _call_center_table_header();  
+  $results = _call_center_filtered_query($call_ids, $call_source_phone_value, $call_destination_phone_value, $call_max_minutes_value, $call_operator_value, $call_operator_ext_value, $call_operator_ext_full, TRUE);
+  
   $html_table = _call_center_create_sortable_table($header, $results);
   _call_center_filter_form($form, $form_state, $center_tid, $call_ids);
   $form['#submit'][] = 'call_center_filter_form_submit';
@@ -59,6 +34,8 @@ function call_center_filter_form_submit($form, &$form_state) {
   // Retrieve the form_state values and save it in session.
   $call_source_phone_value = (isset($form_state['values']['call_source_phone'])) ? $form_state['values']['call_source_phone'] : '';
   $call_destination_phone_value = isset($form_state['values']['call_destination_phone']) ? $form_state['values']['call_destination_phone'] : '';
+  $call_max_minutes_value = (isset($form_state['values']['max_minutes'])) ? $form_state['values']['max_minutes'] : '00';
+  
   $call_operator_value = (isset($form_state['values']['call_operator'])) ? $form_state['values']['call_operator'] : 0;
   $call_operator_ext_value = (isset($form_state['values']['call_operator_extensions']) && $form_state['values']['call_operator_extensions'] != '0') ? array($form_state['values']['call_operator_extensions']) : array();
   if (!count($call_operator_ext_value)) {
@@ -69,36 +46,87 @@ function call_center_filter_form_submit($form, &$form_state) {
   }
   _call_center_session('source_phone', $call_source_phone_value);
   _call_center_session('destination_phone', $call_destination_phone_value);
+  _call_center_session('max_minutes', $call_max_minutes_value);
   _call_center_session('operator', $call_operator_value);
   _call_center_session('operator_ext', $call_operator_ext_value);
-  /*
+}
+
+function call_center_export_csv() {
+  // Retrieve the user information.
   $user_call_info = _call_center_get_user_call_info();
   $center_tid = $user_call_info['center_tid'];
   $call_ids = $user_call_info['call_ids'];
-  $header = _call_center_table_header();
-  // Execute query.
-  $query = db_select('call_center', 'cc')
-    ->condition('id', $call_ids,'IN')
-    ->extend('PagerDefault')->limit(25)
-    ->extend('TableSort')->orderByHeader($header)
-    ->fields ('cc', array ('id', 'call_date', 'call_source_phone', 'call_destination_phone', 'call_duration', 'call_status'));
-  $results = $query->execute();
-  $html_table = _call_center_create_sortable_table($header, $results);
+  // Retrieve the last submited session values.
+  $call_source_phone_value = _call_center_session('source_phone');
+  $call_destination_phone_value = _call_center_session('destination_phone');
+  $call_operator_value = _call_center_session('operator');
+  $call_max_minutes_value = _call_center_session('max_minutes');
+  $call_operator_ext_value = _call_center_session('operator_ext');
+  $call_operator_ext_full = _call_center_session('operator_ext_full');
   
-  //$exposed_filter_form = drupal_get_form('call_center_create_exposed_filter_admin_form', $center_tid, $call_ids);
-  _call_center_filter_form($form, $form_state, $center_tid, $call_ids);
-  $form['#submit'][] = 'call_center_filter_form_submit';
-  // Print the table result.
-  $html = render($exposed_filter_form);
-  $html .= $html_table;
-  $form['table'] = array(
-    '#type' => 'markup',
-    '#markup' => $html,
-    '#weight' => 200,
-  );
-   */
-  //return $html;
-  //return $form;
+  $header = _call_center_csv_header();
+  $results = _call_center_filtered_query($call_ids, $call_source_phone_value, $call_destination_phone_value, $call_max_minutes_value, $call_operator_value, $call_operator_ext_value, $call_operator_ext_full, FALSE);
+  $rows_array = _call_center_create_csv_rows($results);
+  _call_center_export_to_excel_page($header, $rows_array);
+}
+
+function _call_center_filtered_query($call_ids, $source_phone = '', $destination_phone = '', $max_minutes = '00', $operator = 0, $operator_ext = 0, $operator_ext_full = 0, $paged = TRUE) {
+  // Execute query.
+  $query = db_select('call_center', 'cc');
+  if ($paged) {
+    $header = _call_center_table_header();
+    $query->extend('PagerDefault')->limit(25)->extend('TableSort')->orderByHeader($header);
+  }
+  else {
+    $query->orderBy('id', 'ASC');
+  }
+  $query->fields ('cc', array ('id', 'call_date', 'call_source_phone', 'call_destination_phone', 'call_duration', 'call_status'))
+    ->condition('id', $call_ids,'IN');
+  if ($source_phone != '') $query->condition('call_source_phone', db_like($source_phone) . '%', 'LIKE');
+  if ($destination_phone != '') $query->condition('call_destination_phone', db_like($destination_phone) . '%', 'LIKE');
+  if ($max_minutes != '00') {
+    $filter_time = '00:' . $max_minutes . ':00';
+    $query->condition('call_duration', $filter_time, '>=');
+  }
+  if ($operator != 0) {
+    if ($operator_ext != 0) {
+      $query->condition('call_destination_phone', $operator_ext, '=');
+    }
+    else {
+      // Retrieve all operator extensions and create the query.
+      $or_condition = db_or();
+      $num_extensions = 0;
+      foreach($operator_ext_full as $ext) {
+        if ($ext != '0') {
+          $or_condition->condition('call_destination_phone', $ext, '=');
+          $num_extensions++;
+        }
+      }
+      if ($num_extensions) {
+        $query->condition($or_condition);
+      }
+    }
+  }
+  $results = $query->execute();
+  return $results;
+}
+
+function _call_center_export_to_excel_page($column_titles, $row_array) {
+  $filename = 'export.csv';
+  drupal_set_header('Content-Type: text/csv');
+  drupal_set_header('Content-Disposition: attachment; filename=' . $filename);
+
+  foreach($column_titles as $key => $value) {
+    $keys[] =$value;         
+  }
+  if($keys) print implode(',', $keys) ."\r\n";
+  unset($keys);
+  // Fetching the field values
+  foreach($row_array as $key => $value) {
+    $values[] =$value;
+  }
+  print implode(',', $values) ."\r\n";
+  unset($values);
 }
 
 function _call_center_session($key, $value = NULL) {
@@ -120,13 +148,24 @@ function _call_center_session($key, $value = NULL) {
 
 function _call_center_table_header() {
   return array(
-    array('data' => 'Id', 'field' => 'id', 'sort' => 'asc'),
-    array('data' => 'Date', 'field' => 'call_date'),
-    array('data' => 'Source', 'field' => 'call_source_phone'),
-    array('data' => 'Destination', 'field' => 'call_destination_phone'),
-    array('data' => 'Duration', 'field' => 'call_duration'),
-    array('data' => 'Status', 'field' => 'call_status'),
-    array('data' => 'Operations'),
+    array('data' => t('Id'), 'field' => 'id', 'sort' => 'asc'),
+    array('data' => t('Date'), 'field' => 'call_date'),
+    array('data' => t('Source'), 'field' => 'call_source_phone'),
+    array('data' => t('Destination'), 'field' => 'call_destination_phone'),
+    array('data' => t('Duration'), 'field' => 'call_duration'),
+    array('data' => t('Status'), 'field' => 'call_status'),
+    array('data' => t('Operations')),
+  );
+}
+
+function _call_center_csv_header() {
+  return array(
+    t('Id'), 
+    t('Date'), 
+    t('Source phone'), 
+    t('Detination phone'), 
+    t('Duration'), 
+    t('Status'),
   );
 }
 
@@ -185,10 +224,36 @@ function _call_center_create_sortable_table($header, $results) {
   return $html;
 }
 
+function _call_center_create_csv_rows($results) {
+  // Prepare table rows.
+  $rows = array();
+  foreach ($results as $call) {
+    $rows[] = array(
+      $call->id, 
+      format_date($call->call_date), 
+      $call->call_source_phone, 
+      $call->call_destination_phone, 
+      $call->call_duration,
+      $call->call_status,
+      $edit_link . ' ' . $delete_link,
+    );
+  }
+  return $rows;
+}
+
 function _call_center_filter_form(&$form, &$form_state, $center_tid, $call_ids) {
+  // Export CSV link
+  $form['export_csv'] = array(
+    '#type' => 'markup',
+    '#markup' => l(t('Export CSV'), 'admin/calls/export_csv', array('attributes' => array('target'=>'_blank'))),
+    '#prefix' => '<div id="export-csv-link">',
+    '#suffix' => '</div>',
+    '#weight' => 0,
+  );
   // Retrieve the last saved session values.
   $call_source_phone_value = _call_center_session('source_phone');
   $call_destination_phone_value = _call_center_session('destination_phone');
+  $call_max_minutes_value = _call_center_session('max_minutes');
   $call_operator_value = _call_center_session('operator');
   $call_operator_ext_value = _call_center_session('operator_ext');
   // Regular filters.
@@ -226,9 +291,27 @@ function _call_center_filter_form(&$form, &$form_state, $center_tid, $call_ids) 
       $options[$key] = $node_full->title;
     }
   }
-  
-  $operator_exposed_field_active = TRUE;
-  if ($operator_exposed_field_active) {
+  $max_minutes_exposed_filter = TRUE;
+  if ($max_minutes_exposed_filter) {
+    $form['max_minutes'] = array(
+      '#type' => 'select',
+      '#title' => t('Duration greater than'),
+      '#options' => array(
+        '00' => t('No limit'),
+        '01' => t('1 minute'),
+        '05' => t('5 minutes'),
+        '10' => t('10 minutes'),
+        '15' => t('15 minutes'),
+        '30' => t('30 minutes'),
+        '45' => t('45 minutes'),
+        '60' => t('1 hour'),
+      ),
+      '#default_value' => _call_center_session('max_minutes'),
+      '#weight' => 3,
+    );
+  }
+  $operator_exposed_filter = TRUE;
+  if ($operator_exposed_filter) {
     // Add the operator filter form element.
     $call_operator_value = (isset($form_state['values']['call_operator'])) ? $form_state['values']['call_operator'] : $call_operator_value;
     $form['call_operator'] = array(

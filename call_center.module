@@ -237,6 +237,14 @@ function call_center_menu() {
     'type' => MENU_NORMAL_ITEM,
     'file' => 'call_center.admin_ui.inc',
   );
+  $items['admin/calls/export_csv'] = array(
+    'title' => 'Export calls',
+    'page callback' => 'call_center_export_csv',
+    'access arguments' => array('administer call_center entities'),
+    'weight' => 2,
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'call_center.admin_ui.inc',
+  );
   // *** END MENU OPTIONS FOR ENTITY ADMINISTRATION ***
   
   // *** MENU OPTIONS FOR ENTITY ***
