@@ -6,6 +6,8 @@ function call_center_admin_view($form, &$form_state) {
   $center_tid = $user_call_info['center_tid'];
   $call_ids = $user_call_info['call_ids'];
   // Retrieve the last submited session values.
+  $call_date_from_value = _call_center_session('date_from');
+  $call_date_to_value = _call_center_session('date_to');
   $call_source_phone_value = _call_center_session('source_phone');
   $call_destination_phone_value = _call_center_session('destination_phone');
   $call_operator_value = _call_center_session('operator');
@@ -15,7 +17,9 @@ function call_center_admin_view($form, &$form_state) {
   
   $header = _call_center_table_header();  
   $results = _call_center_filtered_query(
-    $call_ids, 
+    $call_ids,
+    $call_date_from_value,
+    $call_date_to_value,
     $call_source_phone_value, 
     $call_destination_phone_value, 
     $call_max_minutes_value, 
@@ -46,6 +50,8 @@ function call_center_export_csv() {
   $center_tid = $user_call_info['center_tid'];
   $call_ids = $user_call_info['call_ids'];
   // Retrieve the last submited session values.
+  $call_date_from_value = _call_center_session('date_from');
+  $call_date_to_value = _call_center_session('date_to');
   $call_source_phone_value = _call_center_session('source_phone');
   $call_destination_phone_value = _call_center_session('destination_phone');
   $call_operator_value = _call_center_session('operator');
@@ -55,7 +61,9 @@ function call_center_export_csv() {
   
   $header = _call_center_csv_header();
   $results = _call_center_filtered_query(
-    $call_ids, 
+    $call_ids,
+    $call_date_from_value,
+    $call_date_to_value,
     $call_source_phone_value, 
     $call_destination_phone_value, 
     $call_max_minutes_value, 
@@ -70,6 +78,8 @@ function call_center_export_csv() {
 
 function call_center_filter_form_submit($form, &$form_state) {
   // Retrieve the form_state values and save it in session.
+  $call_date_from = (isset($form_state['values']['call_date_from'])) ? $form_state['values']['call_date_from'] : '';
+  $call_date_to = (isset($form_state['values']['call_date_to'])) ? $form_state['values']['call_date_to'] : '';
   $call_source_phone_value = (isset($form_state['values']['call_source_phone'])) ? $form_state['values']['call_source_phone'] : '';
   $call_destination_phone_value = isset($form_state['values']['call_destination_phone']) ? $form_state['values']['call_destination_phone'] : '';
   $call_max_minutes_value = (isset($form_state['values']['max_minutes'])) ? $form_state['values']['max_minutes'] : '00';
@@ -82,6 +92,8 @@ function call_center_filter_form_submit($form, &$form_state) {
       $call_operator_ext_value[] = $key;
     }
   }
+  _call_center_session('date_from', $call_date_from);
+  _call_center_session('date_to', $call_date_to);
   _call_center_session('source_phone', $call_source_phone_value);
   _call_center_session('destination_phone', $call_destination_phone_value);
   _call_center_session('max_minutes', $call_max_minutes_value);
@@ -89,14 +101,28 @@ function call_center_filter_form_submit($form, &$form_state) {
   _call_center_session('operator_ext', $call_operator_ext_value);
 }
 
-function _call_center_filtered_query($call_ids, $source_phone = '', $destination_phone = '', $max_minutes = '00', $operator = 0, $operator_ext = 0, $operator_ext_full = 0, $paged = TRUE, $header = NULL) {
-  // Execute query.
+function _call_center_filtered_query($call_ids, $date_from = '', $date_to = '', $source_phone = '', $destination_phone = '', $max_minutes = '00', $operator = 0, $operator_ext = 0, $operator_ext_full = 0, $paged = TRUE, $header = NULL) {
+  global $user;
+  $timezone = $user->timezone;
+  // Execute query.  
   $query = db_select('call_center', 'cc')->extend('PagerDefault')->limit(25)->extend('TableSort')->orderByHeader($header);
   if (!$paged) {
     $query = db_select('call_center', 'cc');
   }
   $query->fields ('cc', array ('id', 'call_date', 'call_source_phone', 'call_destination_phone', 'call_duration', 'call_status'))
     ->condition('id', $call_ids,'IN');
+  
+  if ($date_from != '') {
+    $date_from_info = new DateTime($date_from, new DateTimeZone($timezone));
+    $date_from_timestamp = $date_from_info->getTimestamp();
+    $query->condition('call_date', $date_from_timestamp, '>=');
+  }
+  if ($date_to != '') {
+    $date_to_info = new DateTime($date_to, new DateTimeZone($timezone));
+    $date_to_timestamp = $date_to_info->getTimestamp();
+    $query->condition('call_date', $date_to_timestamp, '<=');
+  } 
+  
   if ($source_phone != '') $query->condition('call_source_phone', db_like($source_phone) . '%', 'LIKE');
   if ($destination_phone != '') $query->condition('call_destination_phone', db_like($destination_phone) . '%', 'LIKE');
   if ($max_minutes != '00') {
@@ -122,8 +148,8 @@ function _call_center_filtered_query($call_ids, $source_phone = '', $destination
       }
     }
   }
-  dpm((string) $query);
-  dpm($query->arguments());
+  //dpm((string) $query);
+  //dpm($query->arguments());
   $results = $query->execute();
   return $results;
 }
@@ -274,15 +300,34 @@ function _call_center_filter_form(&$form, &$form_state, $center_tid, $call_ids) 
     '#markup' => l(t('Export CSV'), 'admin/calls/export_csv', array('attributes' => array('target'=>'_blank'))),
     '#prefix' => '<div id="export-csv-link">',
     '#suffix' => '</div>',
-    '#weight' => 0,
+    '#weight' => -20,
   );
   // Retrieve the last saved session values.
+  $call_date_from_value = _call_center_session('date_from');
+  $call_date_to_value = _call_center_session('date_to');
   $call_source_phone_value = _call_center_session('source_phone');
   $call_destination_phone_value = _call_center_session('destination_phone');
   $call_max_minutes_value = _call_center_session('max_minutes');
   $call_operator_value = _call_center_session('operator');
   $call_operator_ext_value = _call_center_session('operator_ext');
   // Regular filters.
+  $form['call_date_from'] = array(
+    '#title'=>t('Date from?'),
+    '#default_value' => $call_date_from_value,
+    '#date_format' => 'd-m-Y',
+    '#date_year_range' => '0:+1',
+    '#type' => 'date_popup',
+    '#weight'=> -2,
+  );
+  $form['call_date_to'] = array(
+    '#title'=>t('Date to?'),
+    '#default_value' => $call_date_to_value,
+    '#date_format' => 'd-m-Y',
+    '#date_year_range' => '0:+1',
+    '#type' => 'date_popup',
+    '#weight'=> -1,
+    '#suffix' => '<div id="break-line-div"></div>',
+  );
   $form['call_source_phone'] = array(
     '#type' => 'textfield',
     '#title' => t('Source'),
