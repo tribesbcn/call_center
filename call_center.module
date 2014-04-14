@@ -238,10 +238,18 @@ function call_center_menu() {
     'file' => 'call_center.admin_ui.inc',
   );
   $items['admin/calls/export_csv'] = array(
-    'title' => 'Export calls',
+    'title' => 'Export calls to CSV',
     'page callback' => 'call_center_export_csv',
     'access arguments' => array('administer call_center entities'),
     'weight' => 2,
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'call_center.admin_ui.inc',
+  );
+  $items['admin/calls/export_xls'] = array(
+    'title' => 'Export calls to XLS',
+    'page callback' => 'call_center_export_xls',
+    'access arguments' => array('administer call_center entities'),
+    'weight' => 3,
     'type' => MENU_NORMAL_ITEM,
     'file' => 'call_center.admin_ui.inc',
   );

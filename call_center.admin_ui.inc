@@ -29,7 +29,6 @@ function call_center_admin_view($form, &$form_state) {
     TRUE,
     $header
   );
-  
   $html_table = _call_center_create_sortable_table($header, $results);
   _call_center_filter_form($form, $form_state, $center_tid, $call_ids);
   $form['#submit'][] = 'call_center_filter_form_submit';
@@ -73,7 +72,37 @@ function call_center_export_csv() {
     FALSE
   );
   $rows_array = _call_center_create_csv_rows($results);
-  _call_center_export_to_excel_page($header, $rows_array);
+  _call_center_export_to_csv_page($header, $rows_array);
+}
+
+function call_center_export_xls() {
+  // Retrieve the user information.
+  $user_call_info = _call_center_get_user_call_info();
+  $center_tid = $user_call_info['center_tid'];
+  $call_ids = $user_call_info['call_ids'];
+  // Retrieve the last submited session values.
+  $call_date_from_value = _call_center_session('date_from');
+  $call_date_to_value = _call_center_session('date_to');
+  $call_source_phone_value = _call_center_session('source_phone');
+  $call_destination_phone_value = _call_center_session('destination_phone');
+  $call_operator_value = _call_center_session('operator');
+  $call_max_minutes_value = _call_center_session('max_minutes');
+  $call_operator_ext_value = _call_center_session('operator_ext');
+  $call_operator_ext_full = _call_center_session('operator_ext_full');
+  
+  $results = _call_center_filtered_query(
+    $call_ids,
+    $call_date_from_value,
+    $call_date_to_value,
+    $call_source_phone_value, 
+    $call_destination_phone_value, 
+    $call_max_minutes_value, 
+    $call_operator_value, 
+    $call_operator_ext_value, 
+    $call_operator_ext_full, 
+    FALSE
+  );
+  _call_center_php_excel_export($results);
 }
 
 function call_center_filter_form_submit($form, &$form_state) {
@@ -101,14 +130,27 @@ function call_center_filter_form_submit($form, &$form_state) {
   _call_center_session('operator_ext', $call_operator_ext_value);
 }
 
-function _call_center_filtered_query($call_ids, $date_from = '', $date_to = '', $source_phone = '', $destination_phone = '', $max_minutes = '00', $operator = 0, $operator_ext = 0, $operator_ext_full = 0, $paged = TRUE, $header = NULL) {
+function _call_center_filtered_query(
+    $call_ids,
+    $date_from = '',
+    $date_to = '',
+    $source_phone = '',
+    $destination_phone = '',
+    $max_minutes = '00',
+    $operator = 0,
+    $operator_ext = 0,
+    $operator_ext_full = 0,
+    $paged = TRUE,
+    $header = NULL) {
   global $user;
   $timezone = $user->timezone;
-  // Execute query.  
-  $query = db_select('call_center', 'cc')->extend('PagerDefault')->limit(25)->extend('TableSort')->orderByHeader($header);
-  if (!$paged) {
+  // Execute query.
+  if (!is_null($header)) {
+    $query = db_select('call_center', 'cc')->extend('PagerDefault')->limit(25)->extend('TableSort')->orderByHeader($header);
+  } else {
     $query = db_select('call_center', 'cc');
   }
+  // if (!$paged) {}
   $query->fields ('cc', array ('id', 'call_date', 'call_source_phone', 'call_destination_phone', 'call_duration', 'call_status'))
     ->condition('id', $call_ids,'IN');
   
@@ -154,7 +196,47 @@ function _call_center_filtered_query($call_ids, $date_from = '', $date_to = '', 
   return $results;
 }
 
-function _call_center_export_to_excel_page($column_titles, $row_array) {
+function _call_center_php_excel_export($results = array()) {
+  //drupal_add_library('phpexcel', 'PHPExcel');
+  //require_once(DRUPAL_ROOT  . 'sites/all/libraries/PHPExcel/Classes/PHPExcel.php');
+  $phpexcel_path = DRUPAL_ROOT  . '/sites/all/libraries/PHPExcel/Classes/PHPExcel.php';
+  require_once $phpexcel_path;
+  
+  $objPHPExcel = new PHPExcel();
+  $objPHPExcel->getActiveSheet()->setTitle(t('List of calls'));
+  $objPHPExcel->setActiveSheetIndex(0)
+    ->setCellValue('A1', t('Id'))
+    ->setCellValue('B1', t('Date'))
+    ->setCellValue('C1', t('Source phone'))
+    ->setCellValue('D1', t('Detination phone'))
+    ->setCellValue('E1', t('Duration'))
+    ->setCellValue('F1', t('Status'));
+  
+  // Loop through the result set
+  $rowNumber = 2;
+  foreach ($results as $call) {
+    $objPHPExcel->getActiveSheet()->setCellValue('A' . $rowNumber, $call->id);
+    $objPHPExcel->getActiveSheet()->setCellValue('B' . $rowNumber, format_date($call->call_date));
+    $objPHPExcel->getActiveSheet()->setCellValue('C' . $rowNumber, $call->call_source_phone);
+    $objPHPExcel->getActiveSheet()->setCellValue('D' . $rowNumber, $call->call_destination_phone);
+    $objPHPExcel->getActiveSheet()->setCellValue('E' . $rowNumber, $call->id);
+    $objPHPExcel->getActiveSheet()->setCellValue('F' . $rowNumber, $call->call_status);
+    
+    $rowNumber++;
+  }
+  
+  // Freeze pane so that the heading line won't scroll
+  $objPHPExcel->getActiveSheet()->freezePane('A2');
+  // Save as an Excel BIFF (xls) file
+  $objWriter = PHPExcel_IOFactory::createWriter($objPHPExcel, 'Excel5');
+  header('Content-Type: application/vnd.ms-excel');
+  header('Content-Disposition: attachment;filename="calls_' . date('Ymd') . '.xls"');
+  header('Cache-Control: max-age=0');
+  $objWriter->save('php://output');
+  //exit();
+}
+
+function _call_center_export_to_csv_page($column_titles, $row_array) {
   $filename = 'export.csv';
   drupal_set_header('Content-Type: text/csv');
   drupal_set_header('Content-Disposition: attachment; filename=' . $filename);
@@ -301,6 +383,13 @@ function _call_center_filter_form(&$form, &$form_state, $center_tid, $call_ids) 
     '#prefix' => '<div id="export-csv-link">',
     '#suffix' => '</div>',
     '#weight' => -20,
+  );
+  $form['export_xls'] = array(
+    '#type' => 'markup',
+    '#markup' => l(t('Export XLS'), 'admin/calls/export_xls', array('attributes' => array('target'=>'_blank'))),
+    '#prefix' => '<div id="export-xls-link">',
+    '#suffix' => '</div>',
+    '#weight' => -19,
   );
   // Retrieve the last saved session values.
   $call_date_from_value = _call_center_session('date_from');
