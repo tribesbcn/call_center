@@ -164,20 +164,27 @@ function call_center_admin_import_csv_form_validate($form, &$form_state) {
  * Page to show import csv initial form submit.
  */
 function call_center_admin_import_csv_form_submit($form, &$form_state) {
+  // Retrieve the user information.
   global $user;
-  $content = array();
-  $user = user_load($user->uid);
-  $center_tid = (isset($user->call_center) && is_array($user->call_center) && count($user->call_center) > 0) ? $user->call_center[LANGUAGE_NONE][0]['tid'] : 0;
+  $user_call_info = _call_center_get_user_call_info();
+  $center_tid = $user_call_info['center_tid'];
+  $call_ids = $user_call_info['call_ids'];
+  // Validate file.
   $validators = array('file_validate_extensions' => array('csv'));
   $file = file_save_upload('csv_file', $validators, FALSE);
-  //dpm($file);
+  // Read and execute import with file.
   $file_path = drupal_realpath($file->uri);
   $handle = fopen($file_path, "r");
   $csv_info = array();
+  // Read all file calls.
+  $html_imported_msg = '<h3>' . t('Imported calls details') . '</h3><ul>';
+  $html_failed_msg = '<h3>' . t('Failed import calls details (Older than system)') . '</h3><ul>';
+  $last_call_date = _call_center_get_last_call_date($call_ids);
   while (!feof($handle)) {
+    // Read and check CSV line expected format.
     $csv_line = fgetcsv($handle, 0, ",");
     if(count($csv_line) == 8){
-      //$csv_info[] = $csv_line;
+      // Retrieve call date information.
       $csv_line_date = $csv_line[1];
       $csv_line_time = $csv_line[2];
       $csv_line_date_array = explode('/', $csv_line_date);
@@ -190,22 +197,46 @@ function call_center_admin_import_csv_form_submit($form, &$form_state) {
       $call_status = $csv_line[5];
       $call_duration = $csv_line[6];
       $entity_name = 'Call from ' . $call_source_phone;
-      $call_info = new StdClass();
-      $call_info->type = 'call';
-      $call_info->name = $entity_name;
-      $call_info->call_date = $call_date_timestamp;
-      $call_info->call_source_phone = (strlen($call_source_phone) < 20) ? $call_source_phone : substr($call_source_phone, 0, 20);
-      $call_info->call_destination_phone = (strlen($call_destination_phone) < 20) ? $call_destination_phone : substr($call_destination_phone, 0, 20);
-      $call_info->call_status = (strlen($call_status) < 20) ? $call_status : substr($call_status, 0, 20);
-      $call_info->call_duration = (strlen($call_duration) < 20) ? $call_duration : substr($call_duration, 0, 20);
-      $call_info->uid = $user->uid;
-      $call_info->status = TRUE;
-      $call_info->call_center[LANGUAGE_NONE][0]['tid'] = $center_tid;
-      $csv_info[] = $call_info;
-      call_center_save($call_info);
+      // Check if call date is newer than last imported call.
+      /* FALTA!!! */
+      if ($last_call_date < $call_date_timestamp) {
+        // Create a new call with CSV line information.
+        $call_info = new StdClass();
+        $call_info->type = 'call';
+        $call_info->name = $entity_name;
+        $call_info->call_date = $call_date_timestamp;
+        $call_info->call_source_phone = (strlen($call_source_phone) < 20) ? $call_source_phone : substr($call_source_phone, 0, 20);
+        $call_info->call_destination_phone = (strlen($call_destination_phone) < 20) ? $call_destination_phone : substr($call_destination_phone, 0, 20);
+        $call_info->call_status = (strlen($call_status) < 20) ? $call_status : substr($call_status, 0, 20);
+        $call_info->call_duration = (strlen($call_duration) < 20) ? $call_duration : substr($call_duration, 0, 20);
+        $call_info->uid = $user->uid;
+        $call_info->status = TRUE;
+        $call_info->call_center[LANGUAGE_NONE][0]['tid'] = $center_tid;
+        $csv_info[] = $call_info;
+        call_center_save($call_info);
+        $html_imported_msg .= '<li>' . $entity_name . '</li>';
+      }
+      else {
+        $html_failed_msg .= '<li>' . $entity_name . '</li>';
+      }
     }
   }
-  dpm($csv_info);
+  $html_imported_msg .= '</ul>';
+  $html_failed_msg .= '</ul>';
+  // Prepare output for user screen result.
+  $content['import_last_call_date'] = array(
+    '#type' => 'markup',
+    '#markup' => '<h2>' . t('Last imported date') . ': ' . format_date($last_call_date) . '</h2>',
+  );
+  $content['import_info'] = array(
+    '#type' => 'markup',
+    '#markup' => $html_imported_msg,
+  );
+  $content['failed_info'] = array(
+    '#type' => 'markup',
+    '#markup' => $html_failed_msg,
+  );
+  //dpm($csv_info);
   fclose($handle);
   //$contents = fread($handle, filesize($file_path));
   //dpm($contents);
@@ -216,6 +247,20 @@ function call_center_admin_import_csv_form_submit($form, &$form_state) {
   $final_content = array_merge($content, $result_content);
   $form_state['values']['final_content'] = $final_content;
   $form_state['rebuild'] = TRUE;
+}
+
+function _call_center_get_last_call_date($call_ids) {
+  $last_call_date = 0;
+  $query = db_select('call_center', 'cc')
+    ->fields ('cc', array ('call_date'))
+    ->condition('id', $call_ids, 'IN')
+    ->orderBy('call_date', 'DESC')
+    ->range(0, 1);
+  $results = $query->execute();
+  foreach ($results as $call) {
+    $last_call_date = intval($call->call_date);
+  }
+  return $last_call_date;
 }
 
 /**
