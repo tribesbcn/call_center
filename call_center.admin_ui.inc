@@ -198,7 +198,6 @@ function _call_center_filtered_query(
 
 function _call_center_php_excel_export($results = array()) {
   //drupal_add_library('phpexcel', 'PHPExcel');
-  //require_once(DRUPAL_ROOT  . 'sites/all/libraries/PHPExcel/Classes/PHPExcel.php');
   $phpexcel_path = DRUPAL_ROOT  . '/sites/all/libraries/PHPExcel/Classes/PHPExcel.php';
   require_once $phpexcel_path;
   
