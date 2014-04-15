@@ -215,7 +215,7 @@ function _call_center_php_excel_export($results = array()) {
   $rowNumber = 2;
   foreach ($results as $call) {
     $objPHPExcel->getActiveSheet()->setCellValue('A' . $rowNumber, $call->id);
-    $objPHPExcel->getActiveSheet()->setCellValue('B' . $rowNumber, format_date($call->call_date));
+    $objPHPExcel->getActiveSheet()->setCellValue('B' . $rowNumber, format_date($call->call_date, 'short'));
     $objPHPExcel->getActiveSheet()->setCellValue('C' . $rowNumber, $call->call_source_phone);
     $objPHPExcel->getActiveSheet()->setCellValue('D' . $rowNumber, $call->call_destination_phone);
     $objPHPExcel->getActiveSheet()->setCellValue('E' . $rowNumber, $call->id);

@@ -209,7 +209,7 @@ function call_center_menu() {
     'title' => 'Import Call Center CSV',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('call_center_admin_import_csv_form'),
-    'access arguments' => array('administer call_center entities'),
+    'access arguments' => array('create call_center entities'),
     'file' => 'call_center.admin.inc',
     'type' => MENU_LOCAL_ACTION,
     'tab_parent' => 'admin/calls',
@@ -220,7 +220,7 @@ function call_center_menu() {
     'title' => 'Clear all calls',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('call_center_delete_calls_form'),
-    'access arguments' => array('delete call_center entitiy call'),
+    'access arguments' => array('delete call_center entities'),
     'file' => 'call_center.admin.inc',
     'type' => MENU_LOCAL_ACTION,
     'tab_parent' => 'admin/calls',
@@ -338,44 +338,34 @@ function call_center_custom_access($operation, $entity_type, $entity = NULL){
  */
 function call_center_permission() {
   $permissions = array(
-    'administer call_center entities' => array(
+    'administer call_center types' => array(
       'title' => t('Administer Call Center Entity types'),
       'description' => t('Allows users to configure Call Center Entity types and their fields.'),
       'restrict access' => TRUE,
     ),
+    'administer call_center entities' => array(
+      'title' => t('Administer Calls'),
+      'description' => t('Allows users to administer the system calls.'),
+      'restrict access' => TRUE,
+    ),
     'create call_center entities' => array(
-      'title' => t('Create Call Center Entities'),
+      'title' => t('Create Calls'),
       'description' => t('Allows users to create Call Center Entities.'),
       'restrict access' => TRUE,
     ),
-    'view any call_center entities' => array(
-      'title' => t('View any Call Center Entity'),
-      'description' => t('Allows users to view any calls.'),
+    'view call_center entities' => array(
+      'title' => t('View Calls'),
+      'description' => t('Allows users to view calls.'),
       'restrict access' => TRUE,
     ),
-    'view own call_center entities' => array(
-      'title' => t('View own Call Center Entities'),
-      'description' => t('Allows users to view own calls.'),
+    'edit call_center entities' => array(
+      'title' => t('Edit Calls'),
+      'description' => t('Allows users to edit calls.'),
       'restrict access' => TRUE,
     ),
-    'edit any call_center entities' => array(
-      'title' => t('Edit any Call Center Entity'),
-      'description' => t('Allows users to edit any Call Center Entities.'),
-      'restrict access' => TRUE,
-    ),
-    'edit own call_center entities' => array(
-      'title' => t('Edit own Call Center Entities'),
-      'description' => t('Allows users to edit own Call Center Entities.'),
-      'restrict access' => TRUE,
-    ),
-    'delete any call_center entities' => array(
-      'title' => t('Delete any Call Center Entity'),
-      'description' => t('Allows users to delete any Call Center Entities.'),
-      'restrict access' => TRUE,
-    ),
-    'delete own call_center entities' => array(
-      'title' => t('Delete own Call Center Entity'),
-      'description' => t('Allows users to delete own Call Center Entities.'),
+    'delete call_center entities' => array(
+      'title' => t('Delete Calls'),
+      'description' => t('Allows users to delete calls.'),
       'restrict access' => TRUE,
     ),
   );
