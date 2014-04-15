@@ -469,23 +469,18 @@ function call_center_delete_calls_form_submit($form, &$form_state) {
   global $user;
   $user = user_load($user->uid);
   $center_tid = (isset($user->call_center) && is_array($user->call_center) && count($user->call_center) > 0) ? $user->call_center[LANGUAGE_NONE][0]['tid'] : 0;
-  
-  $all_call_center = entity_load('call_center');
-  
   $field_query = new EntityFieldQuery;
   $center_calls = $field_query
     ->entityCondition('entity_type', 'call_center')
     ->propertyCondition('type', 'call')
     ->fieldCondition('call_center', 'tid', $center_tid, '=')
     ->execute();
-  dpm($center_calls);
-  //foreach($all_call_center as $entity_item){
-    //entity_delete('call_center', entity_id('call_center', $entity_item));
-  //}
-  
-  //db_delete('call_center')->condition('call_center', $center_tid);
-  //call_center_delete($callcenter);
-  drupal_set_message(t('All calls are deleted.'));
-
+  if (count($center_calls) != 0) {
+    $center_calls_items = $center_calls['call_center'];
+    foreach ($center_calls_items as $key => $value) {
+      entity_delete('call_center', $key);
+    }
+  }
+  drupal_set_message(t('All calls was deleted.'));
   $form_state['redirect'] = 'admin/calls';
 }

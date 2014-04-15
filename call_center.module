@@ -205,7 +205,7 @@ function call_center_menu() {
     'tab_root' => 'admin/calls',
     'weight' => 1,
   );
-  $items['call_center/import_csv'] = array(
+  $items['admin/calls/import_csv'] = array(
     'title' => 'Import Call Center CSV',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('call_center_admin_import_csv_form'),
@@ -216,7 +216,7 @@ function call_center_menu() {
     'tab_root' => 'admin/calls',
     'weight' => 2,
   );
-  $items['call_center/clear_calls'] = array(
+  $items['admin/calls/clear'] = array(
     'title' => 'Clear all calls',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('call_center_delete_calls_form'),
