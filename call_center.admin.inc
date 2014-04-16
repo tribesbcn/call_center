@@ -198,7 +198,6 @@ function call_center_admin_import_csv_form_submit($form, &$form_state) {
       $call_duration = $csv_line[6];
       $entity_name = 'Call from ' . $call_source_phone;
       // Check if call date is newer than last imported call.
-      /* FALTA!!! */
       if ($last_call_date < $call_date_timestamp) {
         // Create a new call with CSV line information.
         $call_info = new StdClass();

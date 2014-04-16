@@ -74,7 +74,7 @@ function call_center_entity_info_alter(&$entity_info) {
     );
   }
 }
-
+ 
 /**
  * Implements hook_cron().
  */
@@ -407,7 +407,30 @@ function call_center_preprocess_views_view_table__views_view_table__call_center(
 }
 */
 
+function call_center_form_operator_node_form_alter(&$form, $form_state, $form_id) {
+  _call_center_hide_form_center_field($form);
+}
+
+function call_center_form_call_center_form_alter(&$form, $form_state, $form_id) {
+  _call_center_hide_form_center_field($form);
+}
+
+function _call_center_hide_form_center_field (&$form) {
+  // Retrieve the user information.
+  $user_call_info = _call_center_get_user_call_info();
+  $center_tid = $user_call_info['center_tid'];
+  $call_ids = $user_call_info['call_ids'];
+  // Pre select the center tid of operator and hide the field.
+  $form['call_center'][LANGUAGE_NONE]['#default_value'] = $center_tid;
+  $form['call_center'][LANGUAGE_NONE]['#type'] = 'hidden';
+}
+
+/*
+ * NOT USED
+ */
 function call_center_form_alter(&$form, $form_state, $form_id) {
+  //dpm($form_id);
+  /*
   // Check if form is exposed filters from views.
   if ($form_id == 'views_exposed_form') {
     // Retrieve the current user center id.
@@ -461,6 +484,7 @@ function call_center_form_alter(&$form, $form_state, $form_id) {
     }
     dpm($form);
   }
+  */
 }
 
 /* USED WITH VIEWS (NOT USED) */
